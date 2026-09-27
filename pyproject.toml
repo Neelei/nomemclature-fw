@@ -1,0 +1,26 @@
+[project]
+name = "fwclean"
+version = "0.1.0"
+description = "Audit de nomenclature FortiGate et Stormshield, sans modification des flux"
+readme = "README.md"
+authors = [
+    { name = "Julien BOSSUET", email = "bossuet.julien@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+fwclean = "fwclean.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

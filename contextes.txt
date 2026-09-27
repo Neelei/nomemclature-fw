@@ -1,0 +1,10 @@
+# Contextes organisationnels autorisés, un par ligne.
+# Ajoutez les codes site (par, lyo, …) sans modifier l'outil.
+# « ctx » est le contexte provisoire utilisé quand aucun contexte connu
+# n'est reconnu dans le nom. Retirez-le une fois le vocabulaire réel figé.
+
+dmz
+lan
+wan
+vpn
+ctx

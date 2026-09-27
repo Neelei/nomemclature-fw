@@ -1,0 +1,10 @@
+# Export synthétique des règles de filtrage Stormshield.
+# Les lignes nat ne sont pas des règles de filtrage : elles comptent seulement comme références.
+nom,etat,action,type,source,destination,service,interface_source,interface_destination,planification,source_traduite,destination_traduite
+allow-lan-dmz-https,on,pass,filter,net-lan-utilisateurs,grp-dmz-web,sgrp-dmz-web,lan,dmz,sch-lan-bureau,,
+Acces web,on,pass,filter,net-lan-utilisateurs,web_dmz_backup,svc-tcp-443,lan,dmz,sch-lan-bureau,,
+allow-lan-dmz-legacy,off,pass,filter,hst-lan-legacy,hst-dmz-web-01,svc-tcp-443,lan,dmz,,,
+allow-vpn-lan-https,on,pass,filter,rng-vpn-clients,net-lan-utilisateurs,svc-tcp-443,vpn,lan,,,
+allow-wan-dmz-https,on,pass,filter,any,hst-wan-vip,svc-tcp-443,wan,dmz,,,
+allow-lan-dmz-doublon,on,pass,filter,LAN_Utilisateurs,"Web_DMZ,Groupe_Web",HTTPS_custom,lan,dmz,Bureau,,
+nat-sortant,on,nat,nat,net-lan-utilisateurs,hst-wan-vip,svc-tcp-443,lan,wan,,rng-wan-nat,hst-wan-vip
