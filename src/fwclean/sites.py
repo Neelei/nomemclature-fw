@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from fwclean.model import ErreurLecture, Inventaire, Objet, Regle
+from fwclean.model import ErreurLecture, Inventaire, Objet
 from fwclean.naming import (
     CTX,
     ESPACE,
@@ -217,31 +217,6 @@ class Localisateur:
         if resultat.zone == CTX:
             resultat = Localisation(resultat.site, par_nom.zone)
         return resultat
-
-
-    def regle(self, regle: Regle) -> tuple[str, str, str]:
-        """Site depuis les sources (repli : destinations), zones depuis les interfaces puis les objets."""
-        sources = [self.nom(nom) for nom in regle.sources]
-        destinations = [self.nom(nom) for nom in regle.destinations]
-        site = commun(loc.site for loc in sources)
-        if site == CTX:
-            site = commun(loc.site for loc in destinations)
-        zone_source = self._zone_interfaces(regle.interfaces_source) or commun(
-            loc.zone for loc in sources
-        )
-        zone_destination = self._zone_interfaces(regle.interfaces_destination) or commun(
-            loc.zone for loc in destinations
-        )
-        return site, zone_source, zone_destination
-
-    def _zone_interfaces(self, interfaces: Sequence[str]) -> str | None:
-        jetons = [normaliser_chaine(interface) for interface in interfaces]
-        if not jetons or not all(
-            zone_connue(jeton, self.contextes) and jeton not in RESERVES for jeton in jetons
-        ):
-            return None
-        uniques = set(jetons)
-        return uniques.pop() if len(uniques) == 1 else None
 
 
 def _plages(objet: Objet) -> list[tuple[Adresse, Adresse]]:

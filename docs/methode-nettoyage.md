@@ -2,7 +2,7 @@
 
 Trois opérations, toujours dans cet ordre, et seulement après relecture humaine du rapport et du plan. `fwclean` ne se connecte pas aux firewalls et n'écrit rien dans l'export.
 
-1. **Renommage** — l'objet ou la règle ne change pas de contenu, seulement de nom. Les références suivent.
+1. **Renommage** — l'objet ne change pas de contenu, seulement de nom. Les références suivent. Les règles ne sont pas renommées pour le moment.
 2. **Fusion de doublons stricts** — même type et même contenu. Les références des objets supprimés sont réécrites vers l'objet conservé.
 3. **Orphelins** — objet sans aucune référence. Le plan liste un retrait. Rien n'est supprimé automatiquement.
 
@@ -12,11 +12,11 @@ Un objet utilisé seulement par une règle désactivée n'est pas orphelin.
 
 Le contenu (adresse, membres, ports, action, source, destination, service) reste celui de l'export. Le nom proposé suit [la nomenclature](nomenclature.md).
 
-Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Hors référentiel, la zone vient de l'ancien nom et le site vaut `CTX`. Groupes, VIP, pools et règles prennent le site et la zone communs à leurs membres, ou `MULTI`. Le détail est dans [la nomenclature](nomenclature.md#déduction).
+Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Hors référentiel, la zone vient de l'ancien nom et le site vaut `CTX`. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Le détail est dans [la nomenclature](nomenclature.md#déduction).
 
 L'outil ne renomme pas un objet qui part en fusion, ni un orphelin : le retrait ou la fusion suffit. Le rapport Markdown les montre quand même dans les noms non conformes, avec le traitement prévu.
 
-Si le nom proposé est déjà pris par un objet qui existe encore au moment du renommage, un suffixe `-01`, `-02`, … est ajouté au dernier segment. Le nom reste dans la limite du constructeur (35 caractères pour une règle FortiGate, 31 pour un calendrier, 79 sinon) : c'est le détail qui est raccourci.
+Si le nom proposé est déjà pris par un objet qui existe encore au moment du renommage, un suffixe `-01`, `-02`, … est ajouté au dernier segment. Le nom reste dans la limite du constructeur (31 caractères pour un calendrier FortiGate, 79 sinon) : c'est le détail qui est raccourci.
 
 ## Doublon strict
 
@@ -60,7 +60,7 @@ L'objet conservé d'une fusion n'est pas listé comme doublon à retirer. S'il n
 
 ## Hors périmètre
 
-Chevauchements de réseaux, fusion ou réordonnancement de règles, changement d'action, de NAT, d'utilisateurs ou de certificats, poussée vers l'équipement. Le premier passage sur les exports réels sert à compléter `reseaux.csv` et à ajuster [`contextes.txt`](../contextes.txt), pas à réécrire les règles.
+Chevauchements de réseaux, renommage, fusion ou réordonnancement de règles, changement d'action, de NAT, d'utilisateurs ou de certificats, poussée vers l'équipement. Le premier passage sur les exports réels sert à compléter `reseaux.csv` et à ajuster [`contextes.txt`](../contextes.txt), pas à réécrire les règles.
 
 Un objet dont le nom est conforme mais dont le site ou la zone ne correspond pas à son adresse n'est pas signalé : la conformité porte sur la forme du nom.
 
@@ -139,8 +139,8 @@ time,SCH_CTX_LAN_BUREAU,08:00-18:00,monday-friday,,""
 | `source` | `src` | objets source, séparés par des virgules |
 | `destination` | `dst` | objets destination |
 | `service` | `port`, `dstport` | objet service |
-| `interface_source` | `srcif`, `srcintf` | zone source si elle figure dans `contextes.txt` (sinon zone des objets via `reseaux.csv`) |
-| `interface_destination` | `dstif`, `dstintf` | zone destination |
+| `interface_source` | `srcif`, `srcintf` | lue, pas utilisée tant que les règles ne sont pas renommées |
+| `interface_destination` | `dstif`, `dstintf` | idem |
 | `planification` | `schedule`, `time` | objet calendrier |
 | `source_traduite` | `pool`, `nat_src` | objet cité par le NAT |
 | `destination_traduite` | `vip`, `nat_dst` | objet cité par le NAT |
@@ -173,4 +173,4 @@ Clés du plan :
 
 `nouveau_nom` est le nom de l'objet conservé après un éventuel renommage. Il est identique à `conserve` quand le nom était déjà conforme.
 
-Les valeurs de `sorte` sont stables : `hote`, `reseau`, `plage`, `fqdn`, `groupe-adresses`, `service`, `groupe-services`, `vip`, `pool`, `calendrier`, `regle`.
+Les valeurs de `sorte` sont stables : `hote`, `reseau`, `plage`, `fqdn`, `groupe-adresses`, `service`, `groupe-services`, `vip`, `pool`, `calendrier`.

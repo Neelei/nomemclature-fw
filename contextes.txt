@@ -1,5 +1,4 @@
-# Zones autorisées, une par ligne : 3e segment des objets
-# (HST_EPFR_LAN_…), 3e et 4e segments des règles (ALLOW_EPFR_LAN_DMZ_…).
+# Zones autorisées, une par ligne : 3e segment des objets (HST_EPFR_LAN_…).
 # Clés en minuscules dans ce fichier ; matching case-insensitive.
 # Les noms produits sont en MAJUSCULES (DMZ, LAN, …).
 # Les sites ne vont pas ici : ils viennent de reseaux.csv.

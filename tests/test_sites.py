@@ -2,7 +2,7 @@ import pytest
 
 from fwclean.audit import auditer
 from fwclean.fortigate import lire_fortigate
-from fwclean.model import ErreurLecture, Inventaire, Objet, Regle
+from fwclean.model import ErreurLecture, Inventaire, Objet
 from fwclean.sites import Localisateur, Localisation, analyser_reseaux, commun
 
 
@@ -26,10 +26,8 @@ def _groupe(nom: str, *membres: str) -> Objet:
     )
 
 
-def _localisateur(objets, contextes, referentiel, regles=()):
-    inventaire = Inventaire(
-        constructeur="fortigate", sources=("memoire",), objets=tuple(objets), regles=tuple(regles)
-    )
+def _localisateur(objets, contextes, referentiel):
+    inventaire = Inventaire(constructeur="fortigate", sources=("memoire",), objets=tuple(objets))
     return Localisateur(inventaire, contextes, referentiel), inventaire
 
 
@@ -139,25 +137,6 @@ def test_groupe_cyclique_ne_boucle_pas(contextes, referentiel):
     assert loc.objet(objets[0]) == Localisation("ctx", "ctx")
 
 
-def test_regle_site_depuis_les_sources_et_zones(contextes, referentiel):
-    objets = [
-        _hote("zabbix", "10.1.2.10"),
-        _hote("web", "10.1.1.10"),
-        _reseau("Vlan210", "10.210.0.0", 24),
-    ]
-    regles = [
-        Regle("r1", "allow", True, ("zabbix",), ("web",), ("SVC_TCP_443",), ("port1",), ("port2",)),
-        Regle("r2", "allow", True, ("zabbix", "Vlan210"), ("web",), ("SVC_TCP_443",), ("lan",), ("dmz",)),
-        Regle("r3", "deny", True, ("all",), ("web",), ("ALL",), ("wan",), ("dmz",)),
-        Regle("r4", "allow", True, ("all",), ("all",), ("ALL",), ("port9",), ("port8",)),
-    ]
-    loc, _ = _localisateur(objets, contextes, referentiel, regles)
-    assert loc.regle(regles[0]) == ("epfr", "lan", "dmz")
-    assert loc.regle(regles[1]) == ("multi", "lan", "dmz")
-    assert loc.regle(regles[2]) == ("epfr", "wan", "dmz")
-    assert loc.regle(regles[3]) == ("ctx", "ctx", "ctx")
-
-
 def test_audit_propose_site_et_zone(contextes, referentiel):
     texte = """
 config firewall address
@@ -187,8 +166,8 @@ end
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
         ("partenaire", "HST_CTX_CTX_PARTENAIRE"),
         ("zabbix_srv", "HST_EPFR_LAN_ZABBIX-SRV"),
-        ("supervision", "ALLOW_EPFR_LAN_DMZ_TCP-10050"),
     ]
+    assert all(item.sorte != "regle" for item in resultat.non_conformes)
     assert "sites : EPFR, GRAS" in resultat.referentiel
 
 

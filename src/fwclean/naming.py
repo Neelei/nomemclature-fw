@@ -16,7 +16,6 @@ SEP = "_"
 
 # Limites FortiOS plus courtes que 79 (CLI reference, taille du champ name).
 LIMITES = {
-    ("fortigate", "regle"): 35,
     ("fortigate", "calendrier"): 31,
 }
 
@@ -64,7 +63,6 @@ LIBELLE = {
     "vip": "vip",
     "pool": "pool",
     "calendrier": "calendrier",
-    "regle": "règle",
 }
 
 LIBELLE_CONSTRUCTEUR = {
@@ -182,31 +180,6 @@ def est_conforme_objet(
     )
 
 
-def est_conforme_regle(
-    nom: str,
-    action: str,
-    contextes: Sequence[str],
-    sites: Collection[str] = (),
-    limite: int = LONGUEUR_MAX,
-) -> bool:
-    if not forme_valide(nom, limite):
-        return False
-    parties = nom.split(SEP)
-    if len(parties) != 5 or any("-" in partie for partie in parties[:-1]):
-        return False
-    if parties[0] not in {"ALLOW", "DENY"} or parties[0] != action.upper():
-        return False
-    if not site_connu(parties[1], sites):
-        return False
-    if not zone_connue(parties[2], contextes) or not zone_connue(parties[3], contextes):
-        return False
-    service = parties[4].split("-")
-    # -NN final : suffixe d'homonyme, sauf s'il suit un protocole (TCP-80 est un port).
-    if re.fullmatch(r"\d{2}", service[-1]) and not (len(service) >= 2 and service[-2] in PROTOCOLES):
-        return len(service) >= 2
-    return True
-
-
 def proposer_objet(
     nom: str,
     prefixe: str,
@@ -264,32 +237,3 @@ def proposer_service(empreinte: tuple) -> str:
     else:
         detail = "-".join(morceaux) if morceaux else "service"
     return tronquer(f"SVC{SEP}{proto}{SEP}{detail}".upper())
-
-
-def jeton_service(noms: Sequence[str]) -> str:
-    if len(noms) != 1:
-        return "multi"
-    parties = noms[0].split(SEP)
-    if len(parties) == 4 and parties[0].upper() == "SGRP":
-        return normaliser_chaine(parties[3]) or "service"
-    normalise = normaliser_chaine(noms[0])
-    if normalise.startswith("svc-"):
-        normalise = normalise[len("svc-") :]
-    elif normalise.startswith("sgrp-"):
-        jetons = normalise[len("sgrp-") :].split("-")
-        # Ancienne forme SGRP-SITE-ZONE-DETAIL : seul le détail décrit le service.
-        normalise = "-".join(jetons[2:] if len(jetons) >= 3 else jetons)
-    return normalise or "service"
-
-
-def proposer_regle(
-    action: str,
-    site: str,
-    zone_source: str,
-    zone_destination: str,
-    services: Sequence[str],
-    limite: int = LONGUEUR_MAX,
-) -> str:
-    service = jeton_service(services)
-    nom = SEP.join([action, site, zone_source, zone_destination, service]).upper()
-    return tronquer(nom, limite)

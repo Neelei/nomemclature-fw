@@ -1,4 +1,4 @@
-"""Audit : renommages, fusions strictes, orphelins. Rien n'est appliqué."""
+"""Audit des objets : renommages, fusions strictes, orphelins. Les règles ne sont pas renommées."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from fwclean.model import (
     Inventaire,
     NonConforme,
     Objet,
-    Regle,
     Renommage,
     Resultat,
     Retrait,
@@ -19,10 +18,8 @@ from fwclean.naming import (
     ESPACE,
     PREFIXE,
     est_conforme_objet,
-    est_conforme_regle,
     longueur_max,
     proposer_objet,
-    proposer_regle,
     proposer_service,
     rendre_unique,
 )
@@ -46,9 +43,6 @@ def auditer(
 
     def conforme(objet: Objet) -> bool:
         return est_conforme_objet(objet.nom, objet.sorte, contextes, sites, limite(objet.sorte))
-
-    def regle_conforme(regle: Regle) -> bool:
-        return est_conforme_regle(regle.nom, regle.action, contextes, sites, limite("regle"))
 
     def origines(objet: Objet) -> set[str]:
         return refs.get((objet.sorte, objet.nom), set())
@@ -90,49 +84,42 @@ def auditer(
     )
     orphelin_ids = {(objet.sorte, objet.nom) for objet in orphelins}
 
-    candidats: list[tuple[str, Objet | Regle]] = []
-    for objet in inventaire.objets:
-        cle = (objet.sorte, objet.nom)
-        if cle in supprimes or cle in orphelin_ids or conforme(objet):
-            continue
-        candidats.append(("objet", objet))
-    for regle in inventaire.regles:
-        if not regle_conforme(regle):
-            candidats.append(("regle", regle))
-    candidats.sort(key=lambda item: (_sorte_item(item), _nom_item(item)))
+    candidats = sorted(
+        (
+            objet
+            for objet in inventaire.objets
+            if (objet.sorte, objet.nom) not in supprimes
+            and (objet.sorte, objet.nom) not in orphelin_ids
+            and not conforme(objet)
+        ),
+        key=lambda objet: (objet.sorte, objet.nom),
+    )
 
-    prises = {objet.nom for objet in inventaire.objets} | {regle.nom for regle in inventaire.regles}
+    prises = {objet.nom for objet in inventaire.objets}
     renommages: list[Renommage] = []
     nouveaux: dict[tuple[str, str], str] = {}
-    for genre, item in candidats:
-        prises.discard(item.nom)
-        if genre == "objet":
-            assert isinstance(item, Objet)
-            if item.sorte == "service":
-                base = proposer_service(item.empreinte)
-            else:
-                site, zone = localisateur.objet(item)
-                base = proposer_objet(
-                    item.nom, PREFIXE[item.sorte], site, zone, contextes, sites, limite(item.sorte)
-                )
-            references = tuple(sorted(origines(item)))
-            sorte = item.sorte
+    for objet in candidats:
+        prises.discard(objet.nom)
+        if objet.sorte == "service":
+            base = proposer_service(objet.empreinte)
         else:
-            assert isinstance(item, Regle)
-            site, zone_source, zone_destination = localisateur.regle(item)
-            base = proposer_regle(
-                item.action, site, zone_source, zone_destination, item.services, limite("regle")
+            site, zone = localisateur.objet(objet)
+            base = proposer_objet(
+                objet.nom, PREFIXE[objet.sorte], site, zone, contextes, sites, limite(objet.sorte)
             )
-            references = ()
-            sorte = "regle"
-        nouveau = rendre_unique(base, prises, limite(sorte))
+        nouveau = rendre_unique(base, prises, limite(objet.sorte))
         prises.add(nouveau)
-        if nouveau == item.nom:
+        if nouveau == objet.nom:
             continue
         renommages.append(
-            Renommage(sorte=sorte, ancien=item.nom, nouveau=nouveau, references=references)
+            Renommage(
+                sorte=objet.sorte,
+                ancien=objet.nom,
+                nouveau=nouveau,
+                references=tuple(sorted(origines(objet))),
+            )
         )
-        nouveaux[(sorte, item.nom)] = nouveau
+        nouveaux[(objet.sorte, objet.nom)] = nouveau
 
     fusions = tuple(
         sorted(
@@ -156,7 +143,6 @@ def auditer(
     non_conformes = _non_conformes(
         inventaire,
         conforme,
-        regle_conforme,
         supprimes,
         orphelin_ids,
         {renommage.ancien: renommage for renommage in renommages},
@@ -174,7 +160,6 @@ def auditer(
 def _non_conformes(
     inventaire: Inventaire,
     conforme: Callable[[Objet], bool],
-    regle_conforme: Callable[[Regle], bool],
     supprimes: dict[tuple[str, str], Objet],
     orphelin_ids: set[tuple[str, str]],
     renommages: dict[str, Renommage],
@@ -195,17 +180,6 @@ def _non_conformes(
             traitement, propose = "revoir", None
         trouves.append(
             NonConforme(sorte=objet.sorte, nom=objet.nom, traitement=traitement, nom_propose=propose)
-        )
-    for regle in inventaire.regles:
-        if regle_conforme(regle):
-            continue
-        renommage = renommages.get(regle.nom)
-        if renommage is not None and renommage.sorte == "regle":
-            traitement, propose = "renommage", renommage.nouveau
-        else:
-            traitement, propose = "revoir", None
-        trouves.append(
-            NonConforme(sorte="regle", nom=regle.nom, traitement=traitement, nom_propose=propose)
         )
     return tuple(sorted(trouves, key=lambda item: (item.sorte, item.nom)))
 
@@ -241,15 +215,3 @@ def _index_references(inventaire: Inventaire) -> dict[tuple[str, str], set[str]]
         pointer(lien.origine, "calendrier", lien.calendriers)
         pointer(lien.origine, "pool", lien.pools)
     return refs
-
-
-def _sorte_item(item: tuple[str, Objet | Regle]) -> str:
-    genre, valeur = item
-    if genre == "regle":
-        return "regle"
-    assert isinstance(valeur, Objet)
-    return valeur.sorte
-
-
-def _nom_item(item: tuple[str, Objet | Regle]) -> str:
-    return item[1].nom

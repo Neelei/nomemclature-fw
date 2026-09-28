@@ -10,9 +10,7 @@ def test_exemple_fortigate(racine, contextes, referentiel):
     assert inventaire.constructeur == "fortigate"
     assert len(inventaire.regles) == 7
     assert {item.nom for item in resultat.non_conformes} == {
-        "Acces web",
         "Bureau",
-        "Clients vers web",
         "Clients web",
         "Vlan210",
         "fenetre-oubliee",
@@ -29,8 +27,6 @@ def test_exemple_fortigate(racine, contextes, referentiel):
     assert [(item.sorte, item.ancien, item.nouveau) for item in resultat.renommages] == [
         ("groupe-adresses", "Clients web", "GRP_MULTI_LAN_CLIENTS-WEB"),
         ("hote", "web_dmz_backup", "HST_EPFR_DMZ_WEB-BACKUP"),
-        ("regle", "Acces web", "ALLOW_EPFR_LAN_DMZ_TCP-443"),
-        ("regle", "Clients vers web", "ALLOW_MULTI_LAN_DMZ_TCP-443"),
         ("reseau", "Vlan210", "NET_GRAS_LAN_VLAN210"),
     ]
     assert resultat.renommages[1].references == ("Acces web",)

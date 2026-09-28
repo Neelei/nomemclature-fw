@@ -1,6 +1,6 @@
 # Export synthétique des règles de filtrage Stormshield.
 # Les lignes nat ne sont pas des règles de filtrage : elles comptent seulement comme références.
-# Noms conformes en MAJUSCULES : {ALLOW|DENY}_{SITE}_{ZONE_SRC}_{ZONE_DST}_{SERVICE}.
+# Les noms de règles ne sont pas audités : les règles comptent seulement comme références.
 nom,etat,action,type,source,destination,service,interface_source,interface_destination,planification,source_traduite,destination_traduite
 ALLOW_EPFR_LAN_DMZ_HTTPS,on,pass,filter,NET_EPFR_LAN_UTILISATEURS,GRP_EPFR_DMZ_WEB,SGRP_CTX_DMZ_WEB,lan,dmz,SCH_CTX_LAN_BUREAU,,
 Acces web,on,pass,filter,NET_EPFR_LAN_UTILISATEURS,web_dmz_backup,SVC_TCP_443,lan,dmz,SCH_CTX_LAN_BUREAU,,

@@ -43,7 +43,7 @@ Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` 
 
 ## Sites et zones
 
-Les noms prennent la forme `HST_EPFR_LAN_ZABBIXSRV` (objets) et `ALLOW_EPFR_LAN_DMZ_HTTPS` (règles). Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
+Les noms d'objets prennent la forme `HST_EPFR_LAN_ZABBIXSRV`. Les règles ne sont pas renommées pour le moment. Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
 
 ```text
 reseau;site;zone
@@ -51,7 +51,7 @@ reseau;site;zone
 10.1.1.0/24;epfr;dmz
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Hors référentiel, le site vaut `CTX` et la zone vient de l'ancien nom. Un groupe ou une règle dont les membres sont sur plusieurs sites prend `MULTI`.
+Le réseau le plus précis qui contient l'objet gagne. Hors référentiel, le site vaut `CTX` et la zone vient de l'ancien nom. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`.
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
 
