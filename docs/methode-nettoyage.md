@@ -104,11 +104,11 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Exporter deux CSV, et �
 | `router` | ignoré |
 
 ```text
-host,hst-dmz-web-01,10.1.1.10,,,,"Serveur web"
-network,net-lan-utilisateurs,10.0.0.0,255.255.255.0,,,"LAN"
-service,svc-tcp-443,tcp,443,,,"HTTPS"
-group,grp-dmz-web,"hst-dmz-web-01",""
-time,sch-lan-bureau,08:00-18:00,monday-friday,,""
+host,HST-DMZ-WEB-01,10.1.1.10,,,,"Serveur web"
+network,NET-LAN-UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
+service,SVC-TCP-443,tcp,443,,,"HTTPS"
+group,GRP-DMZ-WEB,"HST-DMZ-WEB-01",""
+time,SCH-LAN-BUREAU,08:00-18:00,monday-friday,,""
 ```
 
 **Règles de filtrage** — CSV avec en-tête, virgule ou point-virgule. Une ligne `nat` (colonne `type` ou action `nat`) n'est pas auditée comme une règle : elle sert uniquement à connaître les objets qu'elle cite.

@@ -12,9 +12,9 @@ def _regle(nom: str, destination: str) -> Regle:
         nom=nom,
         action="allow",
         active=True,
-        sources=("net-lan-utilisateurs",),
+        sources=("NET-LAN-UTILISATEURS",),
         destinations=(destination,),
-        services=("svc-tcp-443",),
+        services=("SVC-TCP-443",),
         interfaces_source=("lan",),
         interfaces_destination=("dmz",),
     )
@@ -33,16 +33,16 @@ def _auditer(racine, objets, regles=()):
 def test_le_conforme_gagne_meme_moins_reference(racine):
     resultat = _auditer(
         racine,
-        [_hote("hst-dmz-web-01", "10.1.1.10"), _hote("Web_DMZ", "10.1.1.10")],
+        [_hote("HST-DMZ-WEB-01", "10.1.1.10"), _hote("Web_DMZ", "10.1.1.10")],
         [
-            _regle("allow-lan-dmz-un", "hst-dmz-web-01"),
-            _regle("allow-lan-dmz-deux", "Web_DMZ"),
-            _regle("allow-lan-dmz-trois", "Web_DMZ"),
-            _regle("allow-lan-dmz-quatre", "Web_DMZ"),
+            _regle("ALLOW-LAN-DMZ-UN", "HST-DMZ-WEB-01"),
+            _regle("ALLOW-LAN-DMZ-DEUX", "Web_DMZ"),
+            _regle("ALLOW-LAN-DMZ-TROIS", "Web_DMZ"),
+            _regle("ALLOW-LAN-DMZ-QUATRE", "Web_DMZ"),
         ],
     )
     assert len(resultat.fusions) == 1
-    assert resultat.fusions[0].conserve == "hst-dmz-web-01"
+    assert resultat.fusions[0].conserve == "HST-DMZ-WEB-01"
     assert resultat.fusions[0].supprimes == ("Web_DMZ",)
     assert resultat.renommages == ()
     assert resultat.retraits == ()
@@ -53,17 +53,17 @@ def test_le_plus_reference_puis_renommage(racine):
         racine,
         [_hote("Serveur_DMZ"), _hote("srv")],
         [
-            _regle("allow-lan-dmz-un", "Serveur_DMZ"),
-            _regle("allow-lan-dmz-deux", "Serveur_DMZ"),
-            _regle("allow-lan-dmz-trois", "Serveur_DMZ"),
-            _regle("allow-lan-dmz-quatre", "srv"),
+            _regle("ALLOW-LAN-DMZ-UN", "Serveur_DMZ"),
+            _regle("ALLOW-LAN-DMZ-DEUX", "Serveur_DMZ"),
+            _regle("ALLOW-LAN-DMZ-TROIS", "Serveur_DMZ"),
+            _regle("ALLOW-LAN-DMZ-QUATRE", "srv"),
         ],
     )
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("Serveur_DMZ", "hst-dmz-serveur"),
+        ("Serveur_DMZ", "HST-DMZ-SERVEUR"),
     ]
     assert resultat.fusions[0].conserve == "Serveur_DMZ"
-    assert resultat.fusions[0].nouveau_nom == "hst-dmz-serveur"
+    assert resultat.fusions[0].nouveau_nom == "HST-DMZ-SERVEUR"
     assert resultat.fusions[0].supprimes == ("srv",)
     assert resultat.retraits == ()
 

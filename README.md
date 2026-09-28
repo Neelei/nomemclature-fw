@@ -55,7 +55,7 @@ uv run fwclean audit examples/fortigate/nomenclature.conf --sortie out/fortigate
 uv run fwclean audit examples/stormshield --sortie out/stormshield
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `hst-lan-legacy` n'est cité que par une règle désactivée : il n'est pas orphelin.
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST-LAN-LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin.
 
 ## Tests
 
@@ -65,4 +65,4 @@ uv run pytest
 
 ## Premier passage sur un export réel
 
-Ajuster la liste `dmz`, `lan`, `wan`, `vpn` et les codes site dans `contextes.txt`, puis relancer l'audit. Ce passage ne sert pas à réécrire les règles.
+Ajuster la liste `dmz`, `lan`, `wan`, `vpn` et les codes site dans `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms proposés sont en majuscules (`HST-DMZ-WEB-01`). Ce passage ne sert pas à réécrire les règles.

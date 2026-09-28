@@ -4,9 +4,9 @@ Convention commune pour les objets et le nom des règles FortiGate et Stormshiel
 
 ## Forme
 
-`{prefixe}-{contexte}-{detail}`
+`{PREFIXE}-{CONTEXTE}-{DETAIL}`
 
-- minuscules uniquement (`a-z`, `0-9`) ;
+- majuscules uniquement (`A-Z`, `0-9`) ;
 - segments séparés par un tiret simple, sans tiret en début, en fin, ni doublé ;
 - pas d'espace, d'underscore, de point, ni d'accent ;
 - au moins trois segments : préfixe, contexte, détail ;
@@ -16,67 +16,70 @@ Convention commune pour les objets et le nom des règles FortiGate et Stormshiel
 
 | Préfixe | Objet | Exemple |
 | --- | --- | --- |
-| `hst` | hôte | `hst-dmz-web-01` |
-| `net` | réseau | `net-lan-utilisateurs` |
-| `rng` | plage d'adresses | `rng-vpn-clients` |
-| `fqdn` | nom DNS | `fqdn-wan-updates` |
-| `grp` | groupe d'adresses | `grp-dmz-web` |
-| `svc` | service | `svc-tcp-443` |
-| `sgrp` | groupe de services | `sgrp-dmz-web` |
-| `vip` | VIP | `vip-wan-web` |
-| `pool` | pool d'adresses (FortiGate) | `pool-wan-sortant` |
-| `sch` | calendrier | `sch-lan-bureau` |
+| `HST` | hôte | `HST-DMZ-WEB-01` |
+| `NET` | réseau | `NET-LAN-UTILISATEURS` |
+| `RNG` | plage d'adresses | `RNG-VPN-CLIENTS` |
+| `FQDN` | nom DNS | `FQDN-WAN-UPDATES` |
+| `GRP` | groupe d'adresses | `GRP-DMZ-WEB` |
+| `SVC` | service | `SVC-TCP-443` |
+| `SGRP` | groupe de services | `SGRP-DMZ-WEB` |
+| `VIP` | VIP | `VIP-WAN-WEB` |
+| `POOL` | pool d'adresses (FortiGate) | `POOL-WAN-SORTANT` |
+| `SCH` | calendrier | `SCH-LAN-BUREAU` |
 
-Le préfixe doit correspondre au type réel de l'objet. `net-dmz-web` n'est pas un nom conforme pour un hôte.
+Le préfixe doit correspondre au type réel de l'objet. `NET-DMZ-WEB` n'est pas un nom conforme pour un hôte.
 
 ## Contexte organisationnel
 
-Le deuxième segment est un contexte d'organisation : zone ou code site. La liste vit dans [`contextes.txt`](../contextes.txt), à la racine du projet. L'outil la lit telle quelle. Ajouter un code site ne demande pas de modifier le programme.
+Le deuxième segment est un contexte d'organisation : zone ou code site. La liste vit dans [`contextes.txt`](../contextes.txt), à la racine du projet.
+
+Le fichier `contextes.txt` garde les clés en **minuscules** (`dmz`, `lan`, …). L'outil les lit ainsi et les compare de façon **case-insensitive**. Les noms proposés et les noms conformes utilisent le contexte en **majuscules** (`DMZ`, `LAN`, …). Ajouter un code site ne demande pas de modifier le programme.
 
 Liste livrée :
 
-| Contexte | Sens |
-| --- | --- |
-| `dmz` | zone exposée |
-| `lan` | réseau interne |
-| `wan` | accès Internet ou opérateur |
-| `vpn` | accès distants |
-| `ctx` | contexte provisoire |
+| Contexte (fichier) | Dans un nom | Sens |
+| --- | --- | --- |
+| `dmz` | `DMZ` | zone exposée |
+| `lan` | `LAN` | réseau interne |
+| `wan` | `WAN` | accès Internet ou opérateur |
+| `vpn` | `VPN` | accès distants |
+| `ctx` | `CTX` | contexte provisoire |
 
-`ctx` sert quand le nom d'origine ne contient aucun contexte connu. Le plan propose alors `hst-ctx-…`, le temps d'ajuster la liste sur le vocabulaire réel. Une fois les codes site ajoutés, on peut retirer `ctx` : le repli devient le premier contexte du fichier.
+`CTX` sert quand le nom d'origine ne contient aucun contexte connu. Le plan propose alors `HST-CTX-…`, le temps d'ajuster la liste sur le vocabulaire réel. Une fois les codes site ajoutés, on peut retirer `ctx` : le repli devient le premier contexte du fichier.
 
 Les interfaces du firewall ne sont pas renommées. `lan` dans une règle est le nom de zone déjà en place, repris seulement pour proposer un nom de règle.
 
 ## Services
 
-Un service n'utilise pas le contexte d'organisation. Sa forme est `{svc}-{protocole}-{detail}` :
+Un service n'utilise pas le contexte d'organisation. Sa forme est `{SVC}-{PROTOCOLE}-{DETAIL}` :
 
-- protocole : `tcp`, `udp`, `icmp`, `ip`, `sctp` ou `any` ;
-- détail : le port (`svc-tcp-443`, `svc-udp-53`), une plage (`svc-tcp-2000-2032`), ou un nom court pour ICMP (`svc-icmp-echo`).
+- protocole : `TCP`, `UDP`, `ICMP`, `IP`, `SCTP` ou `ANY` ;
+- détail : le port (`SVC-TCP-443`, `SVC-UDP-53`), une plage (`SVC-TCP-2000-2032`), ou un nom court pour ICMP (`SVC-ICMP-ECHO`).
 
-Un groupe de services reste organisationnel : `sgrp-dmz-web`.
+Un groupe de services reste organisationnel : `SGRP-DMZ-WEB`.
 
 ## Règles
 
-`{allow|deny}-{zone-source}-{zone-destination}-{service}`
+`{ALLOW|DENY}-{ZONE-SOURCE}-{ZONE-DESTINATION}-{SERVICE}`
 
-- `allow` ou `deny` reprend l'action déjà configurée (`accept` / `pass` → `allow`, `deny` / `block` → `deny`). On ne change pas l'action pour faire coller le nom ;
-- les deux zones sont des contextes organisationnels (`dmz`, `lan`, `wan`, `vpn`, ou un code site de la liste) ;
-- le dernier segment décrit le service, en un ou plusieurs morceaux : `https`, `tcp-443` ;
-- un suffixe `-01` à `-99` lève un homonyme. Il n'est pas confondu avec un port : `allow-lan-dmz-tcp-80` garde `80` comme port, parce qu'il suit le protocole.
+- `ALLOW` ou `DENY` reprend l'action déjà configurée (`accept` / `pass` → allow, `deny` / `block` → deny). On ne change pas l'action pour faire coller le nom ;
+- les deux zones sont des contextes organisationnels (`DMZ`, `LAN`, `WAN`, `VPN`, ou un code site de la liste) ;
+- le dernier segment décrit le service, en un ou plusieurs morceaux : `HTTPS`, `TCP-443` ;
+- un suffixe `-01` à `-99` lève un homonyme. Il n'est pas confondu avec un port : `ALLOW-LAN-DMZ-TCP-80` garde `80` comme port, parce qu'il suit le protocole.
 
-Exemples : `allow-lan-dmz-https`, `deny-wan-lan-any`, `allow-lan-dmz-tcp-443`, `allow-lan-dmz-https-01`.
+Exemples : `ALLOW-LAN-DMZ-HTTPS`, `DENY-WAN-LAN-ANY`, `ALLOW-LAN-DMZ-TCP-443`, `ALLOW-LAN-DMZ-HTTPS-01`.
 
-Un nom déjà conforme n'est pas réécrit, même si l'outil aurait choisi un autre libellé de service. `allow-lan-dmz-https` reste, y compris si l'objet service s'appelle `svc-tcp-443`.
+Un nom déjà conforme n'est pas réécrit, même si l'outil aurait choisi un autre libellé de service. `ALLOW-LAN-DMZ-HTTPS` reste, y compris si l'objet service s'appelle `SVC-TCP-443`.
 
 ## Exemples non conformes
 
 | Nom actuel | Pourquoi | Nom proposé (si l'objet est conservé) |
 | --- | --- | --- |
-| `Web_DMZ` | majuscules, underscore, pas de préfixe | `hst-dmz-web` |
-| `LAN Utilisateurs` | espace et majuscules | `net-lan-utilisateurs` |
-| `HTTPS custom` | espace, pas de préfixe | `svc-tcp-443` si le contenu est TCP/443 |
-| `Acces web` | le nom de règle ne suit pas l'action et les zones | `allow-lan-dmz-tcp-443` quand les interfaces sont `lan` et `dmz` et le service `svc-tcp-443` |
+| `Web_DMZ` | underscore, pas de préfixe | `HST-DMZ-WEB` |
+| `LAN Utilisateurs` | espace | `NET-LAN-UTILISATEURS` |
+| `HTTPS custom` | espace, pas de préfixe | `SVC-TCP-443` si le contenu est TCP/443 |
+| `Acces web` | le nom de règle ne suit pas l'action et les zones | `ALLOW-LAN-DMZ-TCP-443` quand les interfaces sont `lan` et `dmz` et le service `SVC-TCP-443` |
+| `hst-dmz-web-01` | minuscules : la forme exige des majuscules | `HST-DMZ-WEB-01` |
 
 Si ce nom désigne un doublon strict, le plan ne le renomme pas : il le fusionne vers l'objet conservé. S'il ne sert nulle part, le plan propose son retrait, pas un renommage.
 

@@ -12,16 +12,16 @@ from fwclean.model import ErreurLecture
 LONGUEUR_MAX = 79
 
 PREFIXE = {
-    "hote": "hst",
-    "reseau": "net",
-    "plage": "rng",
-    "fqdn": "fqdn",
-    "groupe-adresses": "grp",
-    "service": "svc",
-    "groupe-services": "sgrp",
-    "vip": "vip",
-    "pool": "pool",
-    "calendrier": "sch",
+    "hote": "HST",
+    "reseau": "NET",
+    "plage": "RNG",
+    "fqdn": "FQDN",
+    "groupe-adresses": "GRP",
+    "service": "SVC",
+    "groupe-services": "SGRP",
+    "vip": "VIP",
+    "pool": "POOL",
+    "calendrier": "SCH",
 }
 
 # Espace de noms des références (adresse, service, calendrier, pool).
@@ -57,9 +57,9 @@ LIBELLE_CONSTRUCTEUR = {
     "stormshield": "Stormshield",
 }
 
-PROTOCOLES = frozenset({"tcp", "udp", "icmp", "icmp6", "ip", "sctp", "any"})
+PROTOCOLES = frozenset({"TCP", "UDP", "ICMP", "ICMP6", "IP", "SCTP", "ANY"})
 
-_FORME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+_FORME = re.compile(r"[A-Z0-9]+(?:-[A-Z0-9]+)*")
 
 
 def lire_contextes(chemin: Path) -> tuple[str, ...]:
@@ -67,6 +67,7 @@ def lire_contextes(chemin: Path) -> tuple[str, ...]:
 
 
 def analyser_contextes(texte: str) -> tuple[str, ...]:
+    """Lit les contextes : clés stockées en minuscules, matching ensuite case-insensitive."""
     vus: list[str] = []
     for brut in texte.splitlines():
         ligne = brut.split("#", 1)[0].strip().lower()
@@ -81,13 +82,19 @@ def analyser_contextes(texte: str) -> tuple[str, ...]:
     return tuple(vus)
 
 
+def contexte_connu(jeton: str, contextes: Sequence[str]) -> bool:
+    return jeton.lower() in {contexte.lower() for contexte in contextes}
+
+
 def contexte_provisoire(contextes: Sequence[str]) -> str:
-    if "ctx" in contextes:
-        return "ctx"
-    return list(contextes)[0]
+    for contexte in contextes:
+        if contexte.lower() == "ctx":
+            return contexte.lower()
+    return list(contextes)[0].lower()
 
 
 def normaliser_chaine(valeur: str) -> str:
+    """Jetons internes en minuscules (matching contextes, en-têtes CSV)."""
     decompose = unicodedata.normalize("NFKD", valeur)
     sans_accent = "".join(c for c in decompose if not unicodedata.combining(c))
     return re.sub(r"[^a-z0-9]+", "-", sans_accent.lower()).strip("-")
@@ -123,22 +130,22 @@ def est_conforme_objet(nom: str, sorte: str, contextes: Sequence[str]) -> bool:
         return False
     parties = nom.split("-")
     if sorte == "service":
-        return len(parties) >= 3 and parties[0] == "svc" and parties[1] in PROTOCOLES
+        return len(parties) >= 3 and parties[0] == "SVC" and parties[1] in PROTOCOLES
     prefixe = PREFIXE.get(sorte)
     if prefixe is None:
         return False
-    return len(parties) >= 3 and parties[0] == prefixe and parties[1] in contextes
+    return len(parties) >= 3 and parties[0] == prefixe and contexte_connu(parties[1], contextes)
 
 
 def est_conforme_regle(nom: str, action: str, contextes: Sequence[str]) -> bool:
     if not forme_valide(nom):
         return False
     parties = nom.split("-")
-    if len(parties) < 4 or parties[0] not in {"allow", "deny"}:
+    if len(parties) < 4 or parties[0] not in {"ALLOW", "DENY"}:
         return False
-    if parties[0] != action:
+    if parties[0] != action.upper():
         return False
-    if parties[1] not in contextes or parties[2] not in contextes:
+    if not contexte_connu(parties[1], contextes) or not contexte_connu(parties[2], contextes):
         return False
     reste = parties[3:]
     if re.fullmatch(r"\d{2}", reste[-1]) and not (len(reste) >= 2 and reste[-2] in PROTOCOLES):
@@ -150,12 +157,12 @@ def est_conforme_regle(nom: str, action: str, contextes: Sequence[str]) -> bool:
 
 def proposer_depuis_nom(nom: str, prefixe: str, contextes: Sequence[str]) -> str:
     jetons = [jeton for jeton in normaliser_chaine(nom).split("-") if jeton]
-    if jetons and jetons[0] == prefixe:
+    if jetons and jetons[0] == prefixe.lower():
         jetons = jetons[1:]
     contexte = None
     detail: list[str] = []
     for jeton in jetons:
-        if contexte is None and jeton in contextes:
+        if contexte is None and contexte_connu(jeton, contextes):
             contexte = jeton
         else:
             detail.append(jeton)
@@ -163,16 +170,16 @@ def proposer_depuis_nom(nom: str, prefixe: str, contextes: Sequence[str]) -> str
         contexte = contexte_provisoire(contextes)
     if not detail:
         detail = ["nd"]
-    return tronquer("-".join([prefixe, contexte, *detail]))
+    return tronquer("-".join([prefixe, contexte, *detail])).upper()
 
 
 _ICMP = {8: "echo", 0: "reply"}
 
 
 def proposer_service(empreinte: tuple) -> str:
-    """Nom canonique svc-{protocole}-{port} à partir du contenu du service."""
+    """Nom canonique SVC-{PROTOCOLE}-{PORT} à partir du contenu du service."""
     if not empreinte:
-        return "svc-ip-nd"
+        return "SVC-IP-ND"
     proto = empreinte[0][0]
     morceaux: list[str] = []
     for protocole, plages in empreinte:
@@ -191,7 +198,7 @@ def proposer_service(empreinte: tuple) -> str:
         detail = "-".join([suite, *morceaux]) if morceaux else suite
     else:
         detail = "-".join(morceaux) if morceaux else "service"
-    return tronquer(f"svc-{proto}-{detail}")
+    return tronquer(f"svc-{proto}-{detail}").upper()
 
 
 def jeton_service(noms: Sequence[str]) -> str:
@@ -210,11 +217,10 @@ def zone_depuis(
     noms_objets: Sequence[str],
     contextes: Sequence[str],
 ) -> str:
-    ensemble = set(contextes)
     reconnus: list[str] = []
     for interface in interfaces:
         jeton = normaliser_chaine(interface)
-        if jeton not in ensemble:
+        if not contexte_connu(jeton, contextes):
             reconnus = []
             break
         reconnus.append(jeton)
@@ -226,7 +232,7 @@ def zone_depuis(
     trouves: list[str] = []
     for nom in noms_objets:
         for partie in normaliser_chaine(nom).split("-"):
-            if partie in ensemble and partie != "ctx":
+            if contexte_connu(partie, contextes) and partie != "ctx":
                 trouves.append(partie)
                 break
     uniques_objets = list(dict.fromkeys(trouves))
@@ -247,4 +253,4 @@ def proposer_regle(
     source = zone_depuis(interfaces_source, sources, contextes)
     destination = zone_depuis(interfaces_destination, destinations, contextes)
     service = jeton_service(services)
-    return tronquer(f"{action}-{source}-{destination}-{service}")
+    return tronquer(f"{action}-{source}-{destination}-{service}").upper()
