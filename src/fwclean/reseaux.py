@@ -193,9 +193,8 @@ def completer_reseaux(
             vlan = "" if existante.vlan is None else str(existante.vlan)
             actuel = f"{existante.site};{existante.zone};{vlan}"
             voulu = f"{site};{ligne.zone};{'' if ligne.vlan is None else ligne.vlan}"
-            if (existante.site, existante.zone) != (site, ligne.zone) or (
-                avec_vlan and existante.vlan != ligne.vlan
-            ):
+            vlan_contraire = ligne.vlan is not None and existante.vlan not in (None, ligne.vlan)
+            if (existante.site, existante.zone) != (site, ligne.zone) or (avec_vlan and vlan_contraire):
                 differentes.append(f"{reseau} : fichier {actuel}, interface {origine} {voulu}")
             else:
                 presentes.append(f"{reseau} ({origine})")

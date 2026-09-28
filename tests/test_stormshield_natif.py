@@ -1,5 +1,6 @@
 import json
 import shutil
+from dataclasses import replace
 
 import pytest
 
@@ -395,3 +396,12 @@ def test_reseaux_ajouter_entete_sans_vlan(contextes):
     completion = completer_reseaux(existant, lignes, "siege", "Network", contextes, "stormshield")
     assert "10.0.0.0/24;siege;lan  # LAN (vlan0)" in completion.texte
     analyser_reseaux(completion.texte, contextes)
+
+
+def test_reseaux_ajouter_vlan_absent_de_l_interface(contextes):
+    lignes = reseaux_sns(NETWORK, contextes, {})
+    existant = "reseau;site;zone;vlan\n10.0.0.0/24;siege;lan;10\n"
+    sans_tag = [replace(lignes[-1], vlan=None)]
+    assert completer_reseaux(existant, sans_tag, "siege", "Network", contextes).presentes
+    autre_tag = [replace(lignes[-1], vlan=11)]
+    assert completer_reseaux(existant, autre_tag, "siege", "Network", contextes).differentes
