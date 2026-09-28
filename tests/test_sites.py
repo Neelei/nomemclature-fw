@@ -32,23 +32,23 @@ def _localisateur(objets, contextes, referentiel):
 
 
 def test_lecture_du_referentiel(contextes, referentiel):
-    assert referentiel.sites == ("epfr", "gras")
+    assert referentiel.sites == ("gras", "siege")
     assert len(referentiel.entrees) == 6
-    texte = "# commentaire\nRESEAU;Site;Zone\n10.0.0.0/8;EPFR;LAN   # casse tolérée\n"
+    texte = "# commentaire\nRESEAU;Site;Zone\n10.0.0.0/8;SIEGE;LAN   # casse tolérée\n"
     lu = analyser_reseaux(texte, contextes)
-    assert lu.entrees[0].site == "epfr" and lu.entrees[0].zone == "lan"
+    assert lu.entrees[0].site == "siege" and lu.entrees[0].zone == "lan"
 
 
 @pytest.mark.parametrize(
     "texte",
     [
-        "reseau,site,zone\n10.0.0.0/8,epfr,lan\n",
-        "reseau;site;zone\n10.0.0.0/33;epfr;lan\n",
-        "reseau;site;zone\n10.0.0.0/8;epfr;usine\n",
+        "reseau,site,zone\n10.0.0.0/8,siege,lan\n",
+        "reseau;site;zone\n10.0.0.0/33;siege;lan\n",
+        "reseau;site;zone\n10.0.0.0/8;siege;usine\n",
         "reseau;site;zone\n10.0.0.0/8;ctx;lan\n",
         "reseau;site;zone\n10.0.0.0/8;ep-fr;lan\n",
-        "reseau;site;zone\n10.0.0.0/8;epfr\n",
-        "reseau;site;zone\n10.0.0.0/8;epfr;lan\n10.0.0.0/8;gras;lan\n",
+        "reseau;site;zone\n10.0.0.0/8;siege\n",
+        "reseau;site;zone\n10.0.0.0/8;siege;lan\n10.0.0.0/8;gras;lan\n",
     ],
 )
 def test_referentiel_invalide(contextes, texte):
@@ -57,9 +57,9 @@ def test_referentiel_invalide(contextes, texte):
 
 
 def test_commun():
-    assert commun(["epfr", "epfr"]) == "epfr"
-    assert commun(["epfr", "ctx"]) == "epfr"
-    assert commun(["epfr", "gras"]) == "multi"
+    assert commun(["siege", "siege"]) == "siege"
+    assert commun(["siege", "ctx"]) == "siege"
+    assert commun(["siege", "gras"]) == "multi"
     assert commun(["ctx"]) == "ctx"
     assert commun([]) == "ctx"
 
@@ -70,19 +70,19 @@ def test_site_trouve_et_reseau_le_plus_precis(contextes, referentiel):
         "zabbix": _hote("zabbix_srv", "10.1.2.10"),
         "web": _hote("web", "10.1.1.10"),
         "vlan": _reseau("Vlan210", "10.210.0.0", 24),
-        "large": _reseau("tout_epfr", "10.1.0.0", 16),
+        "large": _reseau("tout_siege", "10.1.0.0", 16),
     }
-    assert loc.objet(objets["zabbix"]) == Localisation("epfr", "lan")
-    assert loc.objet(objets["web"]) == Localisation("epfr", "dmz")
+    assert loc.objet(objets["zabbix"]) == Localisation("siege", "lan")
+    assert loc.objet(objets["web"]) == Localisation("siege", "dmz")
     assert loc.objet(objets["vlan"]) == Localisation("gras", "lan")
-    assert loc.objet(objets["large"]) == Localisation("epfr", "lan")
+    assert loc.objet(objets["large"]) == Localisation("siege", "lan")
 
 
 def test_hors_referentiel_ctx_et_zone_par_le_nom(contextes, referentiel):
     loc, _ = _localisateur([], contextes, referentiel)
     assert loc.objet(_hote("srv_dmz_tiers", "192.0.2.50")) == Localisation("ctx", "dmz")
-    assert loc.objet(_hote("EPFR_srv", "192.0.2.51")) == Localisation("ctx", "ctx")
-    assert loc.objet(_reseau("NET_EPFR_LAN_LARGE", "10.0.0.0", 8)) == Localisation("ctx", "lan")
+    assert loc.objet(_hote("SIEGE_srv", "192.0.2.51")) == Localisation("ctx", "ctx")
+    assert loc.objet(_reseau("NET_SIEGE_LAN_LARGE", "10.0.0.0", 8)) == Localisation("ctx", "lan")
 
 
 def test_plage_pool_vip_et_fqdn(contextes, referentiel):
@@ -90,25 +90,25 @@ def test_plage_pool_vip_et_fqdn(contextes, referentiel):
     a_cheval = Objet(sorte="plage", nom="q_lan", empreinte=("v4", "10.0.0.250", "10.1.1.5"), detail="")
     pool_a_cheval = Objet(sorte="pool", nom="q", empreinte=("10.0.0.250", "10.1.1.5"), detail="")
     pool = Objet(sorte="pool", nom="nat", empreinte=("203.0.113.20", "203.0.113.30"), detail="")
-    web = _hote("HST_EPFR_DMZ_WEB-01", "10.1.1.10")
+    web = _hote("HST_SIEGE_DMZ_WEB-01", "10.1.1.10")
     vip = Objet(
         sorte="vip",
         nom="vip_web",
-        empreinte=("vip", "203.0.113.10", "HST_EPFR_DMZ_WEB-01", "", "", ""),
+        empreinte=("vip", "203.0.113.10", "HST_SIEGE_DMZ_WEB-01", "", "", ""),
         detail="",
-        mentions_adresses=("HST_EPFR_DMZ_WEB-01",),
+        mentions_adresses=("HST_SIEGE_DMZ_WEB-01",),
     )
     vip_interne = Objet(
         sorte="vip", nom="vip_lan", empreinte=("vip", "198.51.100.1", "10.1.2.5", "", "", ""), detail=""
     )
     fqdn = Objet(sorte="fqdn", nom="gras_wan_maj", empreinte=("fqdn", "maj.example.com"), detail="")
     loc, _ = _localisateur([web, vip], contextes, referentiel)
-    assert loc.objet(plage) == Localisation("epfr", "vpn")
+    assert loc.objet(plage) == Localisation("siege", "vpn")
     assert loc.objet(a_cheval) == Localisation("ctx", "lan")
-    assert loc.objet(pool_a_cheval) == Localisation("epfr", "multi")
-    assert loc.objet(pool) == Localisation("epfr", "wan")
-    assert loc.objet(vip) == Localisation("epfr", "multi")
-    assert loc.objet(vip_interne) == Localisation("epfr", "lan")
+    assert loc.objet(pool_a_cheval) == Localisation("siege", "multi")
+    assert loc.objet(pool) == Localisation("siege", "wan")
+    assert loc.objet(vip) == Localisation("siege", "multi")
+    assert loc.objet(vip_interne) == Localisation("siege", "lan")
     assert loc.objet(fqdn) == Localisation("gras", "wan")
 
 
@@ -125,7 +125,7 @@ def test_groupe_multi_et_groupe_commun(contextes, referentiel):
     ]
     loc, _ = _localisateur(objets, contextes, referentiel)
     par_nom = {objet.nom: objet for objet in objets}
-    assert loc.objet(par_nom["meme_site"]) == Localisation("epfr", "lan")
+    assert loc.objet(par_nom["meme_site"]) == Localisation("siege", "lan")
     assert loc.objet(par_nom["deux_sites"]) == Localisation("multi", "lan")
     assert loc.objet(par_nom["imbrique"]) == Localisation("multi", "lan")
     assert loc.objet(par_nom["inconnus_dmz"]) == Localisation("ctx", "dmz")
@@ -143,7 +143,7 @@ config firewall address
     edit "zabbix_srv"
         set subnet 10.1.2.10 255.255.255.255
     next
-    edit "HST_EPFR_DMZ_WEB-01"
+    edit "HST_SIEGE_DMZ_WEB-01"
         set subnet 10.1.1.10 255.255.255.255
     next
     edit "partenaire"
@@ -156,7 +156,7 @@ config firewall policy
         set srcintf "port1"
         set dstintf "dmz"
         set srcaddr "zabbix_srv"
-        set dstaddr "HST_EPFR_DMZ_WEB-01" "partenaire"
+        set dstaddr "HST_SIEGE_DMZ_WEB-01" "partenaire"
         set action accept
         set service "SVC_TCP_10050"
     next
@@ -165,27 +165,27 @@ end
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes, referentiel)
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
         ("partenaire", "HST_CTX_CTX_PARTENAIRE"),
-        ("zabbix_srv", "HST_EPFR_LAN_ZABBIX-SRV"),
+        ("zabbix_srv", "HST_SIEGE_LAN_ZABBIX-SRV"),
     ]
     assert all(item.sorte != "regle" for item in resultat.non_conformes)
-    assert "sites : EPFR, GRAS" in resultat.referentiel
+    assert "sites : GRAS, SIEGE" in resultat.referentiel
 
 
 def test_audit_sans_referentiel(contextes):
     texte = """
 config firewall address
-    edit "HST_EPFR_DMZ_WEB-01"
+    edit "HST_SIEGE_DMZ_WEB-01"
         set subnet 10.1.1.10 255.255.255.255
     next
 end
 config firewall addrgrp
     edit "grp"
-        set member "HST_EPFR_DMZ_WEB-01"
+        set member "HST_SIEGE_DMZ_WEB-01"
     next
 end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes)
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("HST_EPFR_DMZ_WEB-01", "HST_CTX_DMZ_WEB-01"),
+        ("HST_SIEGE_DMZ_WEB-01", "HST_CTX_DMZ_WEB-01"),
     ]
     assert resultat.referentiel == "aucun (sites en CTX)"

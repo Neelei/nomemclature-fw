@@ -74,8 +74,8 @@ Les fichiers réels se déposent dans `inbox/` (ignoré par git). Les exemples d
 
 ```text
 reseau;site;zone
-10.1.0.0/16;epfr;lan
-10.1.1.0/24;epfr;dmz
+10.1.0.0/16;siege;lan
+10.1.1.0/24;siege;dmz
 10.210.0.0/24;gras;lan
 ```
 
@@ -121,10 +121,10 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Exporter deux CSV, et �
 | `router` | ignoré |
 
 ```text
-host,HST_EPFR_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
-network,NET_EPFR_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
+host,HST_SIEGE_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
+network,NET_SIEGE_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
 service,SVC_TCP_443,tcp,443,,,"HTTPS"
-group,GRP_EPFR_DMZ_WEB,"HST_EPFR_DMZ_WEB-01",""
+group,GRP_SIEGE_DMZ_WEB,"HST_SIEGE_DMZ_WEB-01",""
 time,SCH_CTX_LAN_BUREAU,08:00-18:00,monday-friday,,""
 ```
 

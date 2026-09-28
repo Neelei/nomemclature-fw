@@ -9,7 +9,7 @@ from fwclean.naming import (
     tronquer,
 )
 
-SITES = ("epfr", "gras")
+SITES = ("gras", "siege")
 
 
 def test_contextes_par_defaut(racine):
@@ -37,46 +37,46 @@ def test_ctx_et_multi_ignores_dans_contextes(tmp_path):
 
 
 def test_objets_conformes_et_plafond(contextes):
-    assert est_conforme_objet("HST_EPFR_LAN_ZABBIXSRV", "hote", contextes, SITES)
+    assert est_conforme_objet("HST_SIEGE_LAN_ZABBIXSRV", "hote", contextes, SITES)
     assert est_conforme_objet("NET_GRAS_LAN_VLAN210", "reseau", contextes, SITES)
     assert est_conforme_objet("GRP_MULTI_LAN_CLIENTS", "groupe-adresses", contextes, SITES)
     assert est_conforme_objet("FQDN_CTX_WAN_UPDATES", "fqdn", contextes, SITES)
-    assert est_conforme_objet("HST_EPFR_MULTI_X", "hote", contextes, SITES)
+    assert est_conforme_objet("HST_SIEGE_MULTI_X", "hote", contextes, SITES)
     assert est_conforme_objet("SVC_TCP_443", "service", contextes, SITES)
     assert est_conforme_objet("SVC_UDP_53", "service", contextes)
     assert not est_conforme_objet("HST-DMZ-WEB-01", "hote", contextes, SITES)
-    assert not est_conforme_objet("HST-EPFR-LAN-ZABBIXSRV", "hote", contextes, SITES)
-    assert not est_conforme_objet("HST_EPFR-LAN_ZABBIXSRV", "hote", contextes, SITES)
-    assert not est_conforme_objet("HST_EPFR_LAN_ZABBIX_SRV", "hote", contextes, SITES)
-    assert not est_conforme_objet("HST_EPFR_LAN__X", "hote", contextes, SITES)
-    assert est_conforme_objet("HST_EPFR_LAN_ZABBIX-SRV-01", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST-SIEGE-LAN-ZABBIXSRV", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST_SIEGE-LAN_ZABBIXSRV", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST_SIEGE_LAN_ZABBIX_SRV", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST_SIEGE_LAN__X", "hote", contextes, SITES)
+    assert est_conforme_objet("HST_SIEGE_LAN_ZABBIX-SRV-01", "hote", contextes, SITES)
     assert est_conforme_objet("SVC_TCP_2000-2032", "service", contextes)
     assert not est_conforme_objet("SVC-TCP-443", "service", contextes)
     assert not est_conforme_objet("HST_LYON_LAN_WEB", "hote", contextes, SITES)
-    assert not est_conforme_objet("HST_EPFR_USINE_WEB", "hote", contextes, SITES)
-    assert not est_conforme_objet("HST-EPFR-LAN", "hote", contextes, SITES)
-    assert not est_conforme_objet("hst-epfr-lan-web", "hote", contextes, SITES)
-    assert not est_conforme_objet("NET_EPFR_LAN_WEB", "hote", contextes, SITES)
-    assert not est_conforme_objet("SVC-EPFR-LAN-HTTPS", "service", contextes, SITES)
-    assert est_conforme_objet("HST_EPFR_LAN_X", "hote", contextes, ("EPFR",))
-    nom = "HST_EPFR_DMZ_" + ("A" * 66)
+    assert not est_conforme_objet("HST_SIEGE_USINE_WEB", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST-SIEGE-LAN", "hote", contextes, SITES)
+    assert not est_conforme_objet("hst-siege-lan-web", "hote", contextes, SITES)
+    assert not est_conforme_objet("NET_SIEGE_LAN_WEB", "hote", contextes, SITES)
+    assert not est_conforme_objet("SVC-SIEGE-LAN-HTTPS", "service", contextes, SITES)
+    assert est_conforme_objet("HST_SIEGE_LAN_X", "hote", contextes, ("SIEGE",))
+    nom = "HST_SIEGE_DMZ_" + ("A" * 65)
     assert len(nom) == 79
     assert est_conforme_objet(nom, "hote", contextes, SITES)
     assert not est_conforme_objet(nom + "B", "hote", contextes, SITES)
 
 
 def test_site_inconnu_sans_referentiel(contextes):
-    assert not est_conforme_objet("HST_EPFR_LAN_ZABBIXSRV", "hote", contextes)
+    assert not est_conforme_objet("HST_SIEGE_LAN_ZABBIXSRV", "hote", contextes)
     assert est_conforme_objet("HST_CTX_LAN_ZABBIXSRV", "hote", contextes)
 
 
 def test_proposition_de_noms(contextes):
-    assert proposer_objet("Web_DMZ", "HST", "epfr", "dmz", contextes, SITES) == "HST_EPFR_DMZ_WEB"
+    assert proposer_objet("Web_DMZ", "HST", "siege", "dmz", contextes, SITES) == "HST_SIEGE_DMZ_WEB"
     assert proposer_objet("Hôte_DMZ", "HST", "ctx", "dmz", contextes, SITES) == "HST_CTX_DMZ_HOTE"
     assert proposer_objet("srv-oublie", "HST", "ctx", "ctx", contextes, SITES) == "HST_CTX_CTX_SRV-OUBLIE"
-    assert proposer_objet("EPFR_zabbix", "HST", "epfr", "lan", contextes, SITES) == "HST_EPFR_LAN_ZABBIX"
-    assert proposer_objet("HST-DMZ-WEB-01", "HST", "epfr", "dmz", contextes, SITES) == "HST_EPFR_DMZ_WEB-01"
-    assert proposer_objet("HST_EPFR_DMZ_WEB-01", "HST", "ctx", "dmz", contextes) == "HST_CTX_DMZ_WEB-01"
+    assert proposer_objet("SIEGE_zabbix", "HST", "siege", "lan", contextes, SITES) == "HST_SIEGE_LAN_ZABBIX"
+    assert proposer_objet("HST-DMZ-WEB-01", "HST", "siege", "dmz", contextes, SITES) == "HST_SIEGE_DMZ_WEB-01"
+    assert proposer_objet("HST_SIEGE_DMZ_WEB-01", "HST", "ctx", "dmz", contextes) == "HST_CTX_DMZ_WEB-01"
     empreinte = empreinte_service([("tcp", ((443, 443, -1, -1),))])
     assert proposer_service(empreinte) == "SVC_TCP_443"
 

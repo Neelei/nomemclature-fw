@@ -2,11 +2,11 @@
 # Les lignes nat ne sont pas des règles de filtrage : elles comptent seulement comme références.
 # Les noms de règles ne sont pas audités : les règles comptent seulement comme références.
 nom,etat,action,type,source,destination,service,interface_source,interface_destination,planification,source_traduite,destination_traduite
-ALLOW_EPFR_LAN_DMZ_HTTPS,on,pass,filter,NET_EPFR_LAN_UTILISATEURS,GRP_EPFR_DMZ_WEB,SGRP_CTX_DMZ_WEB,lan,dmz,SCH_CTX_LAN_BUREAU,,
-Acces web,on,pass,filter,NET_EPFR_LAN_UTILISATEURS,web_dmz_backup,SVC_TCP_443,lan,dmz,SCH_CTX_LAN_BUREAU,,
-ALLOW_EPFR_LAN_DMZ_LEGACY,off,pass,filter,HST_EPFR_LAN_LEGACY,HST_EPFR_DMZ_WEB-01,SVC_TCP_443,lan,dmz,,,
-ALLOW_EPFR_VPN_LAN_HTTPS,on,pass,filter,RNG_EPFR_VPN_CLIENTS,NET_EPFR_LAN_UTILISATEURS,SVC_TCP_443,vpn,lan,,,
-ALLOW_EPFR_WAN_DMZ_HTTPS,on,pass,filter,any,HST_EPFR_WAN_VIP,SVC_TCP_443,wan,dmz,,,
-ALLOW_EPFR_LAN_DMZ_DOUBLON,on,pass,filter,LAN_Utilisateurs,"Web_DMZ,Groupe_Web",HTTPS_custom,lan,dmz,Bureau,,
-Clients vers web,on,pass,filter,Clients_web,HST_EPFR_DMZ_WEB-01,SVC_TCP_443,in3,dmz,SCH_CTX_LAN_BUREAU,,
-nat-sortant,on,nat,nat,NET_EPFR_LAN_UTILISATEURS,HST_EPFR_WAN_VIP,SVC_TCP_443,lan,wan,,RNG_EPFR_WAN_NAT,HST_EPFR_WAN_VIP
+ALLOW_SIEGE_LAN_DMZ_HTTPS,on,pass,filter,NET_SIEGE_LAN_UTILISATEURS,GRP_SIEGE_DMZ_WEB,SGRP_CTX_DMZ_WEB,lan,dmz,SCH_CTX_LAN_BUREAU,,
+Acces web,on,pass,filter,NET_SIEGE_LAN_UTILISATEURS,web_dmz_backup,SVC_TCP_443,lan,dmz,SCH_CTX_LAN_BUREAU,,
+ALLOW_SIEGE_LAN_DMZ_LEGACY,off,pass,filter,HST_SIEGE_LAN_LEGACY,HST_SIEGE_DMZ_WEB-01,SVC_TCP_443,lan,dmz,,,
+ALLOW_SIEGE_VPN_LAN_HTTPS,on,pass,filter,RNG_SIEGE_VPN_CLIENTS,NET_SIEGE_LAN_UTILISATEURS,SVC_TCP_443,vpn,lan,,,
+ALLOW_SIEGE_WAN_DMZ_HTTPS,on,pass,filter,any,HST_SIEGE_WAN_VIP,SVC_TCP_443,wan,dmz,,,
+ALLOW_SIEGE_LAN_DMZ_DOUBLON,on,pass,filter,LAN_Utilisateurs,"Web_DMZ,Groupe_Web",HTTPS_custom,lan,dmz,Bureau,,
+Clients vers web,on,pass,filter,Clients_web,HST_SIEGE_DMZ_WEB-01,SVC_TCP_443,in3,dmz,SCH_CTX_LAN_BUREAU,,
+nat-sortant,on,nat,nat,NET_SIEGE_LAN_UTILISATEURS,HST_SIEGE_WAN_VIP,SVC_TCP_443,lan,wan,,RNG_SIEGE_WAN_NAT,HST_SIEGE_WAN_VIP

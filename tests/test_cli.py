@@ -53,7 +53,7 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
     assert plan["constructeur"] == "fortigate"
     assert any(item["ancien"] == "web_dmz_backup" for item in plan["renommages"])
     assert any(item["nom"] == "srv-oublie" for item in plan["retraits"])
-    assert "Référentiel réseaux :" in rapport and "sites : EPFR, GRAS" in rapport
+    assert "Référentiel réseaux :" in rapport and "sites : GRAS, SIEGE" in rapport
     assert any(item["nouveau"] == "NET_GRAS_LAN_VLAN210" for item in plan["renommages"])
     assert "Aucune modification appliquée." in capsys.readouterr().out
 

@@ -13,7 +13,7 @@ def _regle(nom: str, destination: str) -> Regle:
         nom=nom,
         action="allow",
         active=True,
-        sources=("NET_EPFR_LAN_UTILISATEURS",),
+        sources=("NET_SIEGE_LAN_UTILISATEURS",),
         destinations=(destination,),
         services=("SVC_TCP_443",),
         interfaces_source=("lan",),
@@ -35,16 +35,16 @@ def _auditer(racine, objets, regles=()):
 def test_le_conforme_gagne_meme_moins_reference(racine):
     resultat = _auditer(
         racine,
-        [_hote("HST_EPFR_DMZ_WEB-01", "10.1.1.10"), _hote("Web_DMZ", "10.1.1.10")],
+        [_hote("HST_SIEGE_DMZ_WEB-01", "10.1.1.10"), _hote("Web_DMZ", "10.1.1.10")],
         [
-            _regle("ALLOW_EPFR_LAN_DMZ_UN", "HST_EPFR_DMZ_WEB-01"),
-            _regle("ALLOW_EPFR_LAN_DMZ_DEUX", "Web_DMZ"),
-            _regle("ALLOW_EPFR_LAN_DMZ_TROIS", "Web_DMZ"),
-            _regle("ALLOW_EPFR_LAN_DMZ_QUATRE", "Web_DMZ"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_UN", "HST_SIEGE_DMZ_WEB-01"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_DEUX", "Web_DMZ"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_TROIS", "Web_DMZ"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_QUATRE", "Web_DMZ"),
         ],
     )
     assert len(resultat.fusions) == 1
-    assert resultat.fusions[0].conserve == "HST_EPFR_DMZ_WEB-01"
+    assert resultat.fusions[0].conserve == "HST_SIEGE_DMZ_WEB-01"
     assert resultat.fusions[0].supprimes == ("Web_DMZ",)
     assert resultat.renommages == ()
     assert resultat.retraits == ()
@@ -55,10 +55,10 @@ def test_le_plus_reference_puis_renommage(racine):
         racine,
         [_hote("Serveur_DMZ"), _hote("srv")],
         [
-            _regle("ALLOW_EPFR_LAN_DMZ_UN", "Serveur_DMZ"),
-            _regle("ALLOW_EPFR_LAN_DMZ_DEUX", "Serveur_DMZ"),
-            _regle("ALLOW_EPFR_LAN_DMZ_TROIS", "Serveur_DMZ"),
-            _regle("ALLOW_EPFR_LAN_DMZ_QUATRE", "srv"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_UN", "Serveur_DMZ"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_DEUX", "Serveur_DMZ"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_TROIS", "Serveur_DMZ"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_QUATRE", "srv"),
         ],
     )
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [

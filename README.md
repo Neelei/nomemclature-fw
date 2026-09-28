@@ -43,12 +43,12 @@ Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` 
 
 ## Sites et zones
 
-Les noms d'objets prennent la forme `HST_EPFR_LAN_ZABBIXSRV`. Les règles ne sont pas renommées pour le moment. Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
+Les noms d'objets prennent la forme `HST_SIEGE_LAN_ZABBIXSRV`. Les règles ne sont pas renommées pour le moment. Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
 
 ```text
 reseau;site;zone
-10.1.0.0/16;epfr;lan
-10.1.1.0/24;epfr;dmz
+10.1.0.0/16;siege;lan
+10.1.1.0/24;siege;dmz
 ```
 
 Le réseau le plus précis qui contient l'objet gagne. Hors référentiel, le site vaut `CTX` et la zone vient de l'ancien nom. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`.
@@ -75,7 +75,7 @@ uv run fwclean audit examples/fortigate/nomenclature.conf --reseaux reseaux.exem
 uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie out/stormshield
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_EPFR_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange EPFR et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`.
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`.
 
 ## Tests
 
@@ -85,4 +85,4 @@ uv run pytest
 
 ## Premier passage sur un export réel
 
-Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms en `CTX` restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_EPFR_DMZ_WEB-01`). Ce passage ne sert pas à réécrire les règles.
+Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms en `CTX` restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_SIEGE_DMZ_WEB-01`). Ce passage ne sert pas à réécrire les règles.
