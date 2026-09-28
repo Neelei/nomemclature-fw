@@ -11,6 +11,8 @@ from fwclean.naming import analyser_contextes, cle_correspondance
 from fwclean.reseaux import ecrire_reseaux, reseaux_sns
 from fwclean.sites import analyser_reseaux, appliquer_vlans
 from fwclean.stormshield_natif import (
+    AVERTISSEMENT_NON_GERES,
+    VERIFIER_USAGE,
     genre_natif,
     lire_filtre_natif,
     lire_objets_natifs,
@@ -173,19 +175,25 @@ def test_vlans_et_genres():
     assert genre_natif("objets.csv", "host,a,10.0.0.1") is None
 
 
-def test_exemple_natif_retraits_suspendus(racine, contextes, referentiel):
+def test_exemple_natif(racine, contextes, referentiel):
     inventaire = charger([racine / "examples" / "stormshield-natif"])
     resultat = auditer(inventaire, contextes, referentiel)
     assert inventaire.constructeur == "stormshield"
     assert len(inventaire.regles) == 7
-    assert "router" in inventaire.retraits_suspendus
-    assert resultat.retraits == ()
+    assert inventaire.retraits_suspendus is None
+    assert [(item.sorte, item.nom) for item in resultat.retraits] == [
+        ("groupe-adresses", "grp_oublie"),
+        ("protocole", "rdp"),
+        ("reseau", "IANA_v6_doc"),
+    ]
+    assert AVERTISSEMENT_NON_GERES in inventaire.avertissements
+    assert VERIFIER_USAGE in inventaire.avertissements
     assert inventaire.non_definis == ("Routeur_Principal", "global_SRV_PROXY", "mail")
     renommages = {(item.sorte, item.ancien): item.nouveau for item in resultat.renommages}
     assert renommages[("reseau", "Res-VLAN10")] == "NET_SIEGE_LAN_VLAN10-RES"
     assert renommages[("reseau", "Res-DMZ")] == "NET_SIEGE_DMZ_VLAN66-RES"
     assert renommages[("hote", "srv_web")] == "HST_SIEGE_DMZ_SRV-WEB"
-    assert renommages[("protocole", "rdp")] == "SVC_IP_27_RDP"
+    assert renommages[("protocole", "gre_tunnel")] == "SVC_IP_47_GRE-TUNNEL"
     assert renommages[("service", "rdp")] == "SVC_TCP_3389_RDP"
     assert renommages[("service", "dns_any")] == "SVC_ANY_53_DNS"
     assert ("hote", "srv-oublie") not in renommages
@@ -197,21 +205,19 @@ def test_exemple_natif_retraits_suspendus(racine, contextes, referentiel):
     assert fusions[("service", "SVC_TCP_443_HTTPS")] == ("https_ep",)
 
 
-def test_router_vide_debloque_les_retraits(racine, tmp_path, contextes, referentiel):
+def test_groupes_absents_suspendent_les_retraits(racine, tmp_path, contextes, referentiel):
     dossier = tmp_path / "sns"
     shutil.copytree(racine / "examples" / "stormshield-natif", dossier)
-    (dossier / "router").write_text("", encoding="utf-8")
-    resultat = auditer(charger([dossier]), contextes, referentiel)
-    assert resultat.inventaire.retraits_suspendus is None
-    assert [(item.sorte, item.nom) for item in resultat.retraits] == [
-        ("groupe-adresses", "grp_oublie"),
-        ("protocole", "rdp"),
-        ("reseau", "IANA_v6_doc"),
-    ]
     (dossier / "router").write_text("[Routeur_Principal]\ngw=passerelle_wan\n", encoding="utf-8")
+    (dossier / "global").mkdir()
     inventaire = charger([dossier])
-    assert "router" in inventaire.retraits_suspendus
-    assert any("non lus" in message and "router" in message for message in inventaire.avertissements)
+    assert inventaire.retraits_suspendus is None
+    assert any("non lus (non gérés)" in message and "router" in message for message in inventaire.avertissements)
+    (dossier / "servicegroup").unlink()
+    resultat = auditer(charger([dossier]), contextes, referentiel)
+    assert resultat.inventaire.retraits_suspendus.startswith("fichier servicegroup non lu")
+    assert resultat.retraits == ()
+    assert VERIFIER_USAGE not in resultat.inventaire.avertissements
 
 
 def test_slots_filter_et_dossier_global(racine, tmp_path):
@@ -226,7 +232,7 @@ def test_slots_filter_et_dossier_global(racine, tmp_path):
     inventaire = charger([dossier])
     assert sorted(regle.nom for regle in inventaire.regles) == ["01:r1", "02:r1"]
     assert any("global/" in source for source in inventaire.sources)
-    assert "objectgroup, servicegroup, router" in inventaire.retraits_suspendus
+    assert "objectgroup, servicegroup non lus" in inventaire.retraits_suspendus
 
 
 def test_melanges_refuses(racine):
@@ -332,12 +338,13 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
         ]
     )
     assert code == 0
-    assert "orphelins : suspendus" in capsys.readouterr().out
+    assert "orphelins : 3." in capsys.readouterr().out
     plan = json.loads((sortie / "plan.json").read_text(encoding="utf-8"))
-    assert plan["retraits"] == []
-    assert "router" in plan["avertissements"]["retraits_suspendus"]
+    assert [item["nom"] for item in plan["retraits"]] == ["grp_oublie", "rdp", "IANA_v6_doc"]
+    assert plan["avertissements"]["retraits_suspendus"] is None
     assert plan["avertissements"]["noms_non_definis"] == ["Routeur_Principal", "global_SRV_PROXY", "mail"]
     rapport = (sortie / "rapport.md").read_text(encoding="utf-8")
     assert "## Avertissements" in rapport and "`global_SRV_PROXY`" in rapport
-    assert "| Orphelins | suspendus |" in rapport
-    assert "Retraits suspendus : fichier router non lu" in rapport
+    assert "objets routeur non lus" in rapport
+    assert "| Orphelins | 3 |" in rapport
+    assert "**À vérifier avant chaque suppression** : « Vérifier l'utilisation »" in rapport

@@ -150,6 +150,15 @@ def _markdown(resultat: Resultat) -> str:
     if inventaire.retraits_suspendus:
         lignes.append(f"Retraits suspendus : {_cell(inventaire.retraits_suspendus)}.")
     elif resultat.retraits:
+        if inventaire.constructeur == "stormshield":
+            lignes.extend(
+                [
+                    "**À vérifier avant chaque suppression** : « Vérifier l'utilisation » sur "
+                    "l'objet dans le SNS. Routeurs, objets globaux SMC, VPN, DHCP et proxys ne "
+                    "sont pas lus : un objet cité seulement par eux figure ici à tort.",
+                    "",
+                ]
+            )
         lignes.extend(["| Sorte | Nom |", "| --- | --- |"])
         for retrait in resultat.retraits:
             lignes.append(

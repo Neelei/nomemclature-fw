@@ -1,7 +1,7 @@
 """Lecture des fichiers de configuration natifs d'un SNS (/usr/Firewall/ConfigFiles).
 
 Fichiers lus : object, objectgroup, servicegroup, Filter (ou les slots du dossier Filter/),
-Network, route. Reconnus mais pas lus (format non vérifié) : router, dossier global/.
+Network, route. Reconnus mais pas lus (non gérés) : router, dossier global/.
 Format INI : sections [Host], [Network], [Service]…, une ligne « nom=valeur  # commentaire »
 par objet ; une section par groupe avec un membre par ligne ; une règle par ligne.
 """
@@ -29,13 +29,24 @@ LUS = ("object", "objectgroup", "servicegroup", "filter", "network", "route")
 NON_LUS = ("router",)
 FICHIERS = LUS + NON_LUS
 
-# Sans ces fichiers, un membre de groupe ou une passerelle de routeur paraîtrait orphelin.
-REQUIS_POUR_RETRAITS = ("objectgroup", "servicegroup", "router")
+# Sans ces fichiers, un membre de groupe paraîtrait orphelin. Routeurs et objets globaux SMC
+# ne sont pas gérés (décision) : ils font l'objet d'un avertissement, pas d'une suspension.
+REQUIS_POUR_RETRAITS = ("objectgroup", "servicegroup")
 _RISQUES = {
     "objectgroup": "un membre de groupe d'adresses",
     "servicegroup": "un membre de groupe de services",
-    "router": "une passerelle d'objet routeur",
 }
+
+AVERTISSEMENT_NON_GERES = (
+    "Objets globaux SMC (global_*, Global_*) et objets routeur non lus : un hôte qui ne sert "
+    "que de passerelle dans un objet routeur, ou qui n'est cité que par des objets globaux, "
+    "peut apparaître à tort comme orphelin. À vérifier avant suppression."
+)
+VERIFIER_USAGE = (
+    "Seuls Filter, route et les groupes sont lus comme références : un objet utilisé ailleurs "
+    "(VPN IPsec ou SSL, DHCP, proxys, authentification, slots de filtrage non fournis) paraît "
+    "orphelin. Avant chaque suppression, lancer « Vérifier l'utilisation » sur l'objet dans le SNS."
+)
 
 # Valeurs de règle qui ne sont pas des objets de la configuration.
 _IMPLICITES = {"any", "internet", "none", "original"}
@@ -124,15 +135,12 @@ def assembler_natif(
     elif "filter" not in lus:
         suspension = "aucun fichier Filter lu : aucune règle ne cite les objets"
         avertissements.append(f"Retraits d'orphelins suspendus : {suspension}.")
-    else:
-        avertissements.append(
-            "Seuls Filter, route et les groupes sont lus comme références : un objet utilisé "
-            "ailleurs (VPN IPsec ou SSL, DHCP, proxys, authentification, slots de filtrage non "
-            "fournis) paraît orphelin. Vérifier son utilisation dans le SNS avant tout retrait."
-        )
+    avertissements.append(AVERTISSEMENT_NON_GERES)
+    if suspension is None:
+        avertissements.append(VERIFIER_USAGE)
     if fournis_non_lus:
         avertissements.append(
-            f"Fournis mais non lus (format pas encore vérifié) : {', '.join(fournis_non_lus)}."
+            f"Fournis mais non lus (non gérés) : {', '.join(fournis_non_lus)}."
         )
     if non_definis:
         globaux = sum(1 for nom in non_definis if nom.lower().startswith("global_"))

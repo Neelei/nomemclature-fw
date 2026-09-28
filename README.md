@@ -77,9 +77,9 @@ uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie
 uv run fwclean audit examples/stormshield-natif --reseaux reseaux.exemple.csv --sortie out/stormshield-natif
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. L'exemple SNS natif n'a pas de fichier `router` : ses retraits sont suspendus, et la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC, groupe absent).
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. Dans l'exemple SNS natif, la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC, groupe absent).
 
-Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup`, `servicegroup` et `router` sont lus : sans eux, un membre de groupe ou une passerelle paraîtrait orphelin. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés.
+Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup` et `servicegroup` sont lus : sans eux, un membre de groupe paraîtrait orphelin. Les objets globaux SMC et les objets routeur ne sont pas gérés : un hôte qui ne sert que de passerelle de routeur ou n'est cité que par des objets globaux peut apparaître à tort comme orphelin. Avant chaque suppression, lancer « Vérifier l'utilisation » sur l'objet dans le SNS. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés.
 
 ## Tests
 

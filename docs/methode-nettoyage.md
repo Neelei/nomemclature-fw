@@ -59,7 +59,7 @@ Une référence est l'une des suivantes, qu'elle vienne d'un objet lui-même inu
 - route statique ou policy-route, quand l'export la contient ;
 - sur Stormshield : route par défaut, routes statiques, routeur ou passerelle cité par une règle (`route`), objets traduits du NAT (`->`).
 
-Si l'export ne permet pas de voir toutes les références, **aucun retrait n'est proposé** : le rapport affiche « Orphelins : suspendus » et la raison, le plan garde `retraits` vide et l'explique dans `avertissements.retraits_suspendus`. C'est le cas sur Stormshield tant que `objectgroup`, `servicegroup` et `router` ne sont pas tous lus (voir [Stormshield](#stormshield-fichiers-natifs)). Les orphelins sont alors traités comme les autres objets : renommés s'ils sont non conformes.
+Si l'export ne permet pas de voir toutes les références, **aucun retrait n'est proposé** : le rapport affiche « Orphelins : suspendus » et la raison, le plan garde `retraits` vide et l'explique dans `avertissements.retraits_suspendus`. C'est le cas sur Stormshield tant que `objectgroup` et `servicegroup` ne sont pas tous deux lus (voir [Stormshield](#stormshield-fichiers-natifs)). Les orphelins sont alors traités comme les autres objets : renommés s'ils sont non conformes.
 
 L'objet conservé d'une fusion n'est pas listé comme doublon à retirer. S'il n'a ensuite aucune référence, il apparaît dans les retraits : la fusion a d'abord éliminé les copies, le retrait concerne le survivant.
 
@@ -145,15 +145,19 @@ Un fichier absent sur le SNS fait échouer `tar` : le retirer de la liste et rel
 | `object` | `[Network]`, `[Host]` (hôtes et plages `a-b`), `[Fqdn]`, `[Service]` (`port[-port]/tcp\|udp\|any`, `any` = TCP et UDP), `[Protocol]` (numéro IP) | oui ; valeurs MAC seules et plages MAC ignorées et signalées ; `[Internet]` ignoré |
 | `objectgroup` | groupes d'adresses : `[nom]` puis un membre par ligne | oui |
 | `servicegroup` | groupes de services, même forme | oui |
-| `router` | objets routeur (passerelles) | reconnu, pas encore lu (format non vérifié) ; vide, il compte comme lu |
+| `router` | objets routeur (passerelles) | reconnu, non géré (signalé dans les avertissements) |
 | `Filter` | slot de filtrage actif : `[NAT]` et `[Filter]`, une règle par ligne | oui ; un dossier `Filter/` de slots aussi (règles préfixées par le nom du slot) |
 | `Network` | interfaces (`[ethernetN]`, `[vlanN]` avec `Tag=`, …) | pour le VLAN des réseaux et `fwclean reseaux` |
 | `route` | `DefaultRoute=`, `[StaticRoutes]` (`[off ]DEST,IFACE->PASSERELLE`) | oui ; `[ReverseRoutes]` ignoré |
-| `global/` | objets et politique globaux poussés par SMC | reconnu, pas lu |
+| `global/` | objets et politique globaux poussés par SMC | reconnu, non géré |
 
 Dans une règle, `from`, `to`, `port`, `ipproto`, `route` et, après `->`, les champs traduits citent des objets (listes en `a|b`, négation `!a`, `user=login@objet` → `objet`). Les lignes `separator`, `on IFACE` (interface), `via ipsec`, `any`, `internet`, `none`, `original`, et les objets créés par le SNS (`Firewall_*`, `Network_*`, `ephemeral_fw*`) ne sont pas des objets de l'export. Une ligne `off` est une règle désactivée : elle compte comme référence. Le NAT ne compte que comme référence.
 
-**Groupes requis pour les retraits.** Sans `objectgroup`, `servicegroup` et `router`, un membre de groupe ou une passerelle paraîtrait orphelin : les retraits sont suspendus (voir [Orphelins](#orphelins)). Même avec ces fichiers, seuls Filter, route et les groupes sont lus : un objet utilisé ailleurs (VPN IPsec ou SSL, DHCP, proxys, authentification, autres slots) paraît orphelin. Le rapport le rappelle ; vérifier l'utilisation de l'objet dans l'interface SNS avant tout retrait.
+**Groupes requis pour les retraits.** Sans `objectgroup` ou `servicegroup`, un membre de groupe paraîtrait orphelin : les retraits sont suspendus (voir [Orphelins](#orphelins)).
+
+**Routeurs et objets globaux non gérés.** Les objets routeur (`router`) et les objets globaux SMC (`global/`) ne sont pas lus, et leur absence ne suspend pas les retraits : ils sont peu nombreux et à la marge. Un hôte qui ne sert que de passerelle dans un objet routeur, ou qui n'est cité que par des objets globaux, peut donc apparaître à tort comme orphelin. Le rapport le signale dans ses avertissements.
+
+**Vérifier l'utilisation avant chaque suppression.** Seuls Filter, route et les groupes sont lus comme références : un objet utilisé ailleurs (routeur, objet global, VPN IPsec ou SSL, DHCP, proxys, authentification, autres slots) paraît orphelin. Avant de supprimer un objet proposé en retrait, lancer « Vérifier l'utilisation » sur l'objet dans l'interface SNS (ou dans SMC). Le rapport le rappelle en tête de la liste des orphelins.
 
 **Objets globaux SMC.** Un SNS géré par SMC reçoit des objets globaux (`global_*` dans les règles, `Global_*` dans les groupes) qui ne sont pas dans les fichiers locaux. Ils sont listés dans la section Avertissements du rapport avec les autres noms cités mais non définis (routeurs, groupes d'un fichier non fourni). Ils se renomment dans SMC, pas sur le firewall.
 
