@@ -59,7 +59,7 @@ Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour
 cp reseaux.exemple.csv reseaux.csv
 ```
 
-puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et propose `CTX` comme site. Les zones autorisées (`dmz`, `lan`, `wan`, `vpn`) sont dans `contextes.txt`.
+puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et propose `CTX` comme site. Les zones autorisées (`lan`, `dmz`, `wan`, `vpn`, `mgmt`, `bastion`, …, reprises des zones FortiGate) sont dans `contextes.txt`.
 
 La commande affiche les compteurs et écrit :
 

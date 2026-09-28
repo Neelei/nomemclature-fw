@@ -5,8 +5,18 @@
 # Les sites ne vont pas ici : ils viennent de reseaux.csv.
 # CTX (rien trouvé) et MULTI (membres de plusieurs zones) sont réservés
 # et toujours acceptés ; inutile de les ajouter.
+# En commentaire : zone ou interface FortiGate d'origine (EPFRFORTI01).
 
-dmz
-lan
-wan
-vpn
+lan        # LAN
+dmz        # DMZ
+wan        # WAN (zone SD-WAN, VLAN-777)
+vpn        # ssl.root, VPN SSL
+mgmt       # MGMT NETWORKS : iDRAC, Datacore, SAN
+bastion    # Bastion ADMIN_MGMT
+users      # Users LAN : Wi-Fi corporate (VLAN-40)
+preprodfr  # PreProd FRANCE
+preprodth  # PreProd THAILANDE
+invite     # WIFI INVITE VLAN-42
+mobile     # WIFI MOBILE VLAN-41
+oob        # port mgmt dédié, hors zone
+loop       # LOOPMGMT, loopback d'administration, hors zone

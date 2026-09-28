@@ -41,14 +41,23 @@ La **zone** est le troisième segment d'un objet, le troisième et le quatrième
 
 La comparaison est **case-insensitive** : les fichiers gardent leurs clés en minuscules (`epfr`, `lan`), les noms les écrivent en majuscules (`EPFR`, `LAN`). Ajouter un site ou une zone ne demande pas de modifier le programme.
 
-Zones livrées dans `contextes.txt` :
+Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01. Une zone tient en un seul segment : les noms FortiGate longs ou avec espaces sont raccourcis.
 
-| Zone (fichier) | Dans un nom | Sens |
+| Zone (fichier) | Dans un nom | Zone ou interface FortiGate |
 | --- | --- | --- |
-| `dmz` | `DMZ` | zone exposée |
-| `lan` | `LAN` | réseau interne |
-| `wan` | `WAN` | accès Internet ou opérateur |
-| `vpn` | `VPN` | accès distants |
+| `lan` | `LAN` | `LAN` : réseaux internes |
+| `dmz` | `DMZ` | `DMZ` : zone exposée |
+| `wan` | `WAN` | `WAN` (zone SD-WAN) : accès opérateur |
+| `vpn` | `VPN` | `ssl.root` : VPN SSL |
+| `mgmt` | `MGMT` | `MGMT NETWORKS` : iDRAC, Datacore, SAN |
+| `bastion` | `BASTION` | `Bastion ADMIN_MGMT` |
+| `users` | `USERS` | `Users LAN` : Wi-Fi corporate |
+| `preprodfr` | `PREPRODFR` | `PreProd FRANCE` |
+| `preprodth` | `PREPRODTH` | `PreProd THAILANDE` |
+| `invite` | `INVITE` | `WIFI INVITE VLAN-42` |
+| `mobile` | `MOBILE` | `WIFI MOBILE VLAN-41` |
+| `oob` | `OOB` | port `mgmt` dédié, hors zone |
+| `loop` | `LOOP` | `LOOPMGMT`, loopback d'administration, hors zone |
 
 Valeurs réservées, toujours acceptées comme site et comme zone, à ne pas mettre dans les fichiers :
 

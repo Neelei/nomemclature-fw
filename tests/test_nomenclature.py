@@ -13,7 +13,21 @@ SITES = ("epfr", "gras")
 
 
 def test_contextes_par_defaut(racine):
-    assert lire_contextes(racine / "contextes.txt") == ("dmz", "lan", "wan", "vpn")
+    assert lire_contextes(racine / "contextes.txt") == (
+        "lan",
+        "dmz",
+        "wan",
+        "vpn",
+        "mgmt",
+        "bastion",
+        "users",
+        "preprodfr",
+        "preprodth",
+        "invite",
+        "mobile",
+        "oob",
+        "loop",
+    )
 
 
 def test_ctx_et_multi_ignores_dans_contextes(tmp_path):
