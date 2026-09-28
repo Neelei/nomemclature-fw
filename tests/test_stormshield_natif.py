@@ -134,6 +134,8 @@ Address=203.0.113.2
 Mask=255.255.255.0
 Address1=198.51.100.2
 Mask1=24
+Address2=198.51.100.3
+Mask2=255.255.255.0
 
 [vlan0]
 State=1

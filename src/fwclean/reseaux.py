@@ -89,7 +89,7 @@ def reseaux_sns(
             continue
         nom = interface.get("Name") or section
         tag = interface.get("Tag", "")
-        for reseau in reseaux_interface(interface):
+        for reseau in dict.fromkeys(reseaux_interface(interface)):
             lignes.append(
                 Ligne(
                     reseau=str(reseau),
