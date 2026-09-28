@@ -48,6 +48,7 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
         "renommages",
         "fusions",
         "retraits",
+        "a_revoir",
     }
     assert "appliqu" in plan["avertissement"]
     assert plan["constructeur"] == "fortigate"
@@ -64,9 +65,11 @@ def test_audit_sans_reseaux_csv(racine, tmp_path, capsys, monkeypatch):
     code = executer(["audit", str(source), "--sortie", str(tmp_path / "out")])
     assert code == 0
     sortie = capsys.readouterr().out
-    assert "Référentiel réseaux : aucun (sites en CTX)" in sortie
+    assert "Référentiel réseaux : aucun" in sortie
     plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
-    assert any(item["nouveau"] == "NET_CTX_CTX_VLAN210" for item in plan["renommages"])
+    assert not any(item["ancien"] == "Vlan210" for item in plan["renommages"])
+    revoir = {item["nom"]: item["commentaire"] for item in plan["a_revoir"]}
+    assert revoir["Vlan210"] == "site et zone introuvables : réseau absent de reseaux.csv"
 
 
 def test_reseaux_csv_local_par_defaut(racine, tmp_path, capsys, monkeypatch):

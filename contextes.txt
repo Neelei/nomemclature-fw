@@ -2,8 +2,8 @@
 # Clés en minuscules dans ce fichier ; matching case-insensitive.
 # Les noms produits sont en MAJUSCULES (DMZ, LAN, …).
 # Les sites ne vont pas ici : ils viennent de reseaux.csv.
-# CTX (rien trouvé) et MULTI (membres de plusieurs zones) sont réservés
-# et toujours acceptés ; inutile de les ajouter.
+# MULTI (membres de plusieurs zones) est réservé et toujours accepté ;
+# inutile de l'ajouter. Un objet sans zone trouvée est signalé, pas renommé.
 # En commentaire : zone ou interface FortiGate d'origine (EPFRFORTI01).
 
 lan        # LAN

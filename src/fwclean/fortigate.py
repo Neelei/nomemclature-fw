@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+
 from fwclean.contenu import (
     canon_ip,
     decouper_subnet,
@@ -18,6 +20,7 @@ from fwclean.contenu import (
 from fwclean.model import ErreurLecture, Inventaire, Lien, Objet, Regle
 
 SECTIONS = {
+    "system interface",
     "firewall address",
     "firewall addrgrp",
     "firewall service custom",
@@ -38,9 +41,10 @@ def lire_fortigate(texte: str, source: str) -> Inventaire:
     regles: list[Regle] = []
     liens: list[Lien] = []
     ignores: list[str] = []
+    vlans = _vlans(blocs.get("system interface", []))
 
     for nom, data in blocs.get("firewall address", []):
-        objet, ignore = _adresse(nom, data)
+        objet, ignore = _adresse(nom, data, vlans)
         if objet:
             objets.append(objet)
         elif ignore:
@@ -86,7 +90,44 @@ def lire_fortigate(texte: str, source: str) -> Inventaire:
     )
 
 
-def _adresse(nom: str, data: dict[str, list[str]]) -> tuple[Objet | None, str | None]:
+def _vlans(interfaces: list[tuple[str, dict[str, list[str]]]]) -> dict[str, tuple[ipaddress.IPv4Network | None, int]]:
+    """Interfaces VLAN : nom → (réseau connecté, VLAN ID)."""
+    vlans: dict[str, tuple[ipaddress.IPv4Network | None, int]] = {}
+    for nom, data in interfaces:
+        vlanid = (data.get("vlanid") or [""])[0]
+        if not vlanid.isdigit():
+            continue
+        ip = data.get("ip") or []
+        reseau = None
+        if len(ip) >= 2 and ip[0] != "0.0.0.0":
+            reseau = ipaddress.ip_network(f"{ip[0]}/{ip[1]}", strict=False)
+        vlans[nom] = (reseau, int(vlanid))
+    return vlans
+
+
+def _vlan_du_reseau(
+    adresse: str,
+    prefixe: int,
+    interface: str | None,
+    vlans: dict[str, tuple[ipaddress.IPv4Network | None, int]],
+) -> int | None:
+    """VLAN de l'interface citée, sinon du réseau d'interface le plus précis qui contient l'objet."""
+    if interface and interface in vlans:
+        return vlans[interface][1]
+    objet = ipaddress.ip_network(f"{adresse}/{prefixe}", strict=False)
+    candidats = [
+        (reseau.prefixlen, vlanid)
+        for reseau, vlanid in vlans.values()
+        if reseau is not None and reseau.version == objet.version and objet.subnet_of(reseau)
+    ]
+    return max(candidats)[1] if candidats else None
+
+
+def _adresse(
+    nom: str,
+    data: dict[str, list[str]],
+    vlans: dict[str, tuple[ipaddress.IPv4Network | None, int]] | None = None,
+) -> tuple[Objet | None, str | None]:
     type_objet = (data.get("type") or ["ipmask"])[0].lower()
     if type_objet == "fqdn":
         valeur = (data.get("fqdn") or [""])[0]
@@ -127,8 +168,16 @@ def _adresse(nom: str, data: dict[str, list[str]]) -> tuple[Objet | None, str | 
             Objet(sorte="hote", nom=nom, empreinte=("v4", adresse, prefixe), detail=detail),
             None,
         )
+    interface = (data.get("interface") or [None])[0] if type_objet == "interface-subnet" else None
+    vlan = _vlan_du_reseau(adresse, prefixe, interface, vlans or {})
     return (
-        Objet(sorte="reseau", nom=nom, empreinte=("v4", adresse, prefixe), detail=detail),
+        Objet(
+            sorte="reseau",
+            nom=nom,
+            empreinte=("v4", adresse, prefixe),
+            detail=detail,
+            vlan=vlan,
+        ),
         None,
     )
 

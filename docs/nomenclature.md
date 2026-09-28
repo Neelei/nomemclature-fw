@@ -4,15 +4,16 @@ Convention commune pour les objets FortiGate et Stormshield. Elle ne décrit pas
 
 ## Forme
 
-Objets : `{PREFIXE}_{SITE}_{ZONE}_{DETAIL}` — `HST_SIEGE_LAN_ZABBIXSRV`, `NET_GRAS_LAN_VLAN210`.
+Objets d'adresse (hôtes, réseaux, plages, FQDN, groupes, VIP, pools) : `{PREFIXE}_{SITE}_{ZONE}_{DETAIL}` — `HST_SIEGE_LAN_ZABBIXSRV`, `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`.
 
-Services : `SVC_{PROTOCOLE}_{DETAIL}`, sans site ni zone — `SVC_TCP_443`.
+Services, groupes de services et calendriers : `{PREFIXE}_{DETAIL}`, sans site ni zone — `SVC_HTTPS`, `SGRP_ACTIVE-DIRECTORY`, `SCH_BUREAU`.
 
 - majuscules uniquement (`A-Z`, `0-9`) ;
 - les segments (type, site, zone, détail) sont séparés par un underscore `_` ;
-- le tiret `-` est réservé à l'intérieur du dernier segment : `HST_SIEGE_LAN_ZABBIX-SRV`, `SVC_TCP_2000-2032`, `HST_SIEGE_DMZ_WEB-01`. Type, site et zone n'en contiennent jamais ;
+- le tiret `-` est réservé à l'intérieur du dernier segment : `HST_SIEGE_LAN_ZABBIX-SRV`, `SVC_HTTP-8080`, `HST_SIEGE_DMZ_WEB-01`. Type, site et zone n'en contiennent jamais ;
 - ni `_` ni `-` en début, en fin, ou doublé ; pas d'espace, de point, ni d'accent ;
-- exactement quatre segments pour un objet (préfixe, site, zone, détail), trois pour un service.
+- exactement quatre segments pour un objet d'adresse (préfixe, site, zone, détail), deux pour un service, un groupe de services ou un calendrier (préfixe, détail) ;
+- un réseau dont le VLAN est connu dans la configuration porte `VLAN{ID}` dans son détail (voir [Réseaux et VLAN](#réseaux-et-vlan)).
 
 Longueur maximale, reprise des limites FortiOS :
 
@@ -21,30 +22,30 @@ Longueur maximale, reprise des limites FortiOS :
 | calendrier (`firewall schedule`) | 31 | 79 |
 | autres objets (adresses, groupes, services, VIP, pools) | 79 | 79 |
 
-Un nom proposé trop long est raccourci **dans son dernier segment seulement**, à une frontière de tiret quand c'est possible : type, site et zones restent entiers. `SCH_CTX_LAN_HORAIRES-USINE-NUITS` (32 caractères) devient `SCH_CTX_LAN_HORAIRES-USINE` sur FortiGate. Un nom déjà en place qui dépasse la limite est signalé non conforme.
+Un nom proposé trop long est raccourci **dans son dernier segment seulement**, à une frontière de tiret quand c'est possible : type, site et zones restent entiers. `SCH_HORAIRES-USINE-ETE-NUITS-WEK` (32 caractères) devient `SCH_HORAIRES-USINE-ETE-NUITS` sur FortiGate. Un nom déjà en place qui dépasse la limite est signalé non conforme.
 
 ## Préfixes
 
 | Préfixe | Objet | Exemple |
 | --- | --- | --- |
 | `HST` | hôte | `HST_SIEGE_DMZ_WEB-01` |
-| `NET` | réseau | `NET_SIEGE_LAN_UTILISATEURS` |
+| `NET` | réseau | `NET_SIEGE_LAN_VLAN10-UTILISATEURS` |
 | `RNG` | plage d'adresses | `RNG_SIEGE_VPN_CLIENTS` |
-| `FQDN` | nom DNS | `FQDN_CTX_WAN_UPDATES` |
+| `FQDN` | nom DNS | `FQDN_SIEGE_WAN_UPDATES` |
 | `GRP` | groupe d'adresses | `GRP_SIEGE_DMZ_WEB` |
-| `SVC` | service | `SVC_TCP_443` |
-| `SGRP` | groupe de services | `SGRP_CTX_DMZ_WEB` |
+| `SVC` | service | `SVC_HTTPS` |
+| `SGRP` | groupe de services | `SGRP_WEB` |
 | `VIP` | VIP | `VIP_SIEGE_MULTI_WEB` |
 | `POOL` | pool d'adresses (FortiGate) | `POOL_SIEGE_WAN_SORTANT` |
-| `SCH` | calendrier | `SCH_CTX_LAN_BUREAU` |
+| `SCH` | calendrier | `SCH_BUREAU` |
 
 Le préfixe doit correspondre au type réel de l'objet. `NET_SIEGE_DMZ_WEB` n'est pas un nom conforme pour un hôte.
 
 ## Site et zone
 
-Le **site** est le deuxième segment. Il est valide s'il figure dans le référentiel [`reseaux.csv`](#référentiel-reseauxcsv), ou s'il vaut `CTX` ou `MULTI`.
+Le **site** est le deuxième segment d'un objet d'adresse. Il est valide s'il figure dans le référentiel [`reseaux.csv`](#référentiel-reseauxcsv), ou s'il vaut `MULTI`.
 
-La **zone** est le troisième segment. Elle est valide si elle figure dans [`contextes.txt`](../contextes.txt), ou si elle vaut `CTX` ou `MULTI`.
+La **zone** est le troisième segment. Elle est valide si elle figure dans [`contextes.txt`](../contextes.txt), ou si elle vaut `MULTI`.
 
 La comparaison est **case-insensitive** : les fichiers gardent leurs clés en minuscules (`siege`, `lan`), les noms les écrivent en majuscules (`SIEGE`, `LAN`). Ajouter un site ou une zone ne demande pas de modifier le programme.
 
@@ -66,12 +67,9 @@ Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01.
 | `oob` | `OOB` | port `mgmt` dédié, hors zone |
 | `loop` | `LOOP` | `LOOPMGMT`, loopback d'administration, hors zone |
 
-Valeurs réservées, toujours acceptées comme site et comme zone, à ne pas mettre dans les fichiers :
+`MULTI` est réservé, toujours accepté comme site et comme zone, à ne pas mettre dans les fichiers : les membres (groupe, VIP, pool) appartiennent à plusieurs sites ou plusieurs zones.
 
-| Valeur | Sens |
-| --- | --- |
-| `CTX` | rien trouvé : l'objet n'est dans aucun réseau du référentiel, ou son nom ne contient aucune zone connue |
-| `MULTI` | les membres (groupe, VIP, pool) appartiennent à plusieurs sites ou plusieurs zones |
+**Pas de nom sans correspondance.** Un objet d'adresse dont le site ou la zone reste introuvable n'est pas renommé. Le rapport le liste avec le traitement `revoir` et un commentaire (« site introuvable : adresse absente de reseaux.csv », « site et zone introuvables : FQDN sans adresse IP… »), et le plan le reprend dans `a_revoir`. On complète `reseaux.csv` puis on relance l'audit. `CTX` n'apparaît dans aucun nom proposé, et un nom existant en `CTX` n'est pas conforme.
 
 Un nom est jugé sur sa forme : `HST_SIEGE_LAN_X` est conforme dès que `SIEGE` est un site connu et `LAN` une zone connue, même si l'adresse est en fait en DMZ. La déduction ci-dessous sert à **proposer** un nom pour ce qui ne l'est pas.
 
@@ -92,33 +90,39 @@ reseau;site;zone
 - lignes vides et commentaires `#` ignorés ;
 - un même réseau déclaré deux fois avec un site ou une zone différents est refusé.
 
-Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le dépôt versionne seulement [`reseaux.exemple.csv`](../reseaux.exemple.csv), à copier. Sans `reseaux.csv`, l'audit tourne quand même : aucun site n'est connu, les sites proposés valent `CTX`.
+Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le dépôt versionne seulement [`reseaux.exemple.csv`](../reseaux.exemple.csv), à copier. Sans `reseaux.csv`, l'audit tourne quand même : aucun site n'est connu, les objets d'adresse non conformes sont tous signalés à revoir.
 
 ### Déduction
 
 | Objet | Site | Zone |
 | --- | --- | --- |
 | hôte, réseau, plage | réseau **le plus précis** du référentiel qui contient l'objet | idem |
-| hôte, réseau, plage hors référentiel | `CTX` | zone trouvée dans l'ancien nom (`Web_DMZ` → `DMZ`), sinon `CTX` |
+| hôte, réseau, plage hors référentiel | introuvable → à revoir | idem |
 | groupe d'adresses | commun à tous les membres | commun à tous les membres, sinon zone de l'ancien nom |
 | VIP | commun à l'IP externe et à l'IP ou l'objet mappé | idem, sinon zone de l'ancien nom |
 | pool | réseau qui contient toute la plage, sinon commun aux deux bornes | idem |
-| FQDN, groupe de services, calendrier | site trouvé dans l'ancien nom, sinon `CTX` | zone trouvée dans l'ancien nom, sinon `CTX` |
+| FQDN | site trouvé dans l'ancien nom, sinon à revoir | zone trouvée dans l'ancien nom, sinon à revoir |
 
-« Commun » : si tous les membres connus ont la même valeur, c'est elle ; s'ils en ont plusieurs, `MULTI` ; si aucun n'est connu, `CTX`. Un membre en `CTX` ne compte pas : un groupe d'un hôte `SIEGE` et d'une adresse partenaire hors référentiel reste `SIEGE`.
+« Commun » : si tous les membres localisés ont la même valeur, c'est elle ; s'ils en ont plusieurs, `MULTI` ; si aucun n'est localisé, l'objet est à revoir. Un membre non localisé ne compte pas : un groupe d'un hôte `SIEGE` et d'une adresse partenaire hors référentiel reste `SIEGE`.
 
 Avec le référentiel d'exemple, `10.1.1.10` est dans `10.1.0.0/16` (LAN) et dans `10.1.1.0/24` (DMZ) : le `/24` est plus précis, l'hôte devient `HST_SIEGE_DMZ_…`.
 
-Le détail reprend l'ancien nom sans préfixe, sans le premier jeton de site et sans le premier jeton de zone : `SIEGE_zabbix` → `HST_SIEGE_LAN_ZABBIX`. Un ancien nom déjà découpé en préfixe, site, zone (`HST_SIEGE_DMZ_WEB-01` ou `HST-SIEGE-DMZ-WEB-01`) garde seulement son détail, même si son site n'est pas connu.
+Le détail reprend l'ancien nom sans préfixe, et sans le site et la zone retenus : `SIEGE_zabbix` → `HST_SIEGE_LAN_ZABBIX`, `Web_DMZ` → `HST_SIEGE_DMZ_WEB`. Un autre mot de zone reste dans le détail : `MGMT [vlan13]` en LAN devient `NET_SIEGE_LAN_VLAN13-MGMT`. Un ancien nom déjà découpé en préfixe, site, zone (`HST_SIEGE_DMZ_WEB-01` ou `HST-SIEGE-DMZ-WEB-01`) garde seulement son détail, même si son site n'est pas connu.
 
-## Services
+## Réseaux et VLAN
 
-Un service n'utilise ni site ni zone. Sa forme est `SVC_{PROTOCOLE}_{DETAIL}` :
+Sur FortiGate, les interfaces VLAN de `config system interface` (`set vlanid`) donnent le VLAN d'un réseau :
 
-- protocole : `TCP`, `UDP`, `ICMP`, `IP`, `SCTP` ou `ANY` ;
-- détail : le port (`SVC_TCP_443`, `SVC_UDP_53`), une plage (`SVC_TCP_2000-2032`), ou un nom court pour ICMP (`SVC_ICMP_ECHO`).
+- une adresse `interface-subnet` prend le VLAN de l'interface qu'elle cite ;
+- une adresse `ipmask` prend le VLAN de l'interface dont le réseau connecté la contient (le plus précis s'il y en a plusieurs).
 
-Un groupe de services suit la forme des objets : `SGRP_CTX_DMZ_WEB`.
+Le détail commence alors par `VLAN{ID}`, et les mentions de VLAN de l'ancien nom sont retirées : `SRV-ESX-MSA [vlan11]` → `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`, `MEETING [valn50]` → `NET_SIEGE_LAN_VLAN50-MEETING`. L'ID vient toujours de la configuration : `EDF [vlan20]`, sur une interface en VLAN 52, devient `NET_SIEGE_LAN_VLAN52-EDF`. Un réseau dont le VLAN est connu et dont le nom ne contient pas `VLAN{ID}` n'est pas conforme. Sans VLAN connu (réseau distant, export Stormshield), rien n'est ajouté.
+
+## Services, groupes de services, calendriers
+
+Ils n'ont ni site ni zone. Leur forme est `{PREFIXE}_{DETAIL}`, et le détail **garde le libellé de l'ancien nom**, qui porte le sens : `HTTP-8080` → `SVC_HTTP-8080`, `MS Global Catalog` → `SVC_MS-GLOBAL-CATALOG`, `Active Directory` → `SGRP_ACTIVE-DIRECTORY`, `Bureau` → `SCH_BUREAU`. Le protocole et le port restent visibles dans le contenu, repris par le rapport.
+
+Seul un service sans libellé exploitable prend protocole et port comme détail : `SVC_TCP-443`, `SVC_UDP-67-68`.
 
 ## Règles
 
@@ -132,10 +136,12 @@ Avec `reseaux.exemple.csv` :
 | --- | --- | --- | --- |
 | `web_dmz_backup` | `10.1.1.20/32` | pas de préfixe ni de site | `HST_SIEGE_DMZ_WEB-BACKUP` |
 | `Vlan210` | `10.210.0.0/24` | pas de préfixe ni de site | `NET_GRAS_LAN_VLAN210` |
-| `partenaire` | `192.0.2.10/32` | hors référentiel | `HST_CTX_CTX_PARTENAIRE` |
+| `partenaire` | `192.0.2.10/32` | hors référentiel | aucun : à revoir, « site et zone introuvables » |
 | `Clients web` | membres `SIEGE` et `GRAS` en LAN | espace, deux sites | `GRP_MULTI_LAN_CLIENTS-WEB` |
 | `HST-DMZ-WEB-01` | `10.1.1.10/32` | ancienne forme, sans site | `HST_SIEGE_DMZ_WEB-01` |
-| `HTTPS custom` | `tcp/443` | espace, pas de préfixe | `SVC_TCP_443` |
+| `LAN Utilisateurs` | `10.0.0.0/24`, VLAN 10 | espace, pas de VLAN | `NET_SIEGE_LAN_VLAN10-UTILISATEURS` |
+| `Appli metier 8443` | `tcp/8443` | espaces, pas de préfixe | `SVC_APPLI-METIER-8443` |
+| `SVC_TCP_443` | `tcp/443` | trois segments, pas de libellé | `SVC_TCP-443` |
 | `HST-SIEGE-DMZ-WEB-01` | hôte | segments séparés par des tirets au lieu de `_` | `HST_SIEGE_DMZ_WEB-01` |
 | `hst_siege_dmz_web-01` | hôte | minuscules : la forme exige des majuscules | `HST_SIEGE_DMZ_WEB-01` |
 

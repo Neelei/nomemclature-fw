@@ -16,14 +16,26 @@ from fwclean.model import (
 )
 from fwclean.naming import (
     ESPACE,
+    CTX,
     PREFIXE,
+    SANS_LOCALISATION,
     est_conforme_objet,
+    libelle_service,
     longueur_max,
     proposer_objet,
-    proposer_service,
     rendre_unique,
 )
 from fwclean.sites import Localisateur, Referentiel
+
+_RAISONS = {
+    "hote": "adresse absente de reseaux.csv",
+    "reseau": "réseau absent de reseaux.csv",
+    "plage": "plage absente de reseaux.csv",
+    "pool": "pool absent de reseaux.csv",
+    "fqdn": "FQDN sans adresse IP, aucun site ni zone reconnu dans le nom",
+    "groupe-adresses": "aucun membre localisé",
+    "vip": "IP externe et IP mappée absentes de reseaux.csv",
+}
 
 MOTIF_ORPHELIN = "aucune reference"
 
@@ -42,7 +54,9 @@ def auditer(
         return longueur_max(inventaire.constructeur, sorte)
 
     def conforme(objet: Objet) -> bool:
-        return est_conforme_objet(objet.nom, objet.sorte, contextes, sites, limite(objet.sorte))
+        return est_conforme_objet(
+            objet.nom, objet.sorte, contextes, sites, limite(objet.sorte), objet.vlan
+        )
 
     def origines(objet: Objet) -> set[str]:
         return refs.get((objet.sorte, objet.nom), set())
@@ -98,15 +112,26 @@ def auditer(
     prises = {objet.nom for objet in inventaire.objets}
     renommages: list[Renommage] = []
     nouveaux: dict[tuple[str, str], str] = {}
+    commentaires: dict[tuple[str, str], str] = {}
     for objet in candidats:
-        prises.discard(objet.nom)
-        if objet.sorte == "service":
-            base = proposer_service(objet.empreinte)
+        if objet.sorte in SANS_LOCALISATION:
+            site = zone = None
         else:
             site, zone = localisateur.objet(objet)
-            base = proposer_objet(
-                objet.nom, PREFIXE[objet.sorte], site, zone, contextes, sites, limite(objet.sorte)
-            )
+            if CTX in (site, zone):
+                commentaires[(objet.sorte, objet.nom)] = _commentaire(objet.sorte, site, zone)
+                continue
+        prises.discard(objet.nom)
+        base = proposer_objet(
+            objet.nom,
+            PREFIXE[objet.sorte],
+            site,
+            zone,
+            contextes,
+            limite(objet.sorte),
+            vlan=objet.vlan,
+            libelle_defaut=libelle_service(objet.empreinte) if objet.sorte == "service" else "nd",
+        )
         nouveau = rendre_unique(base, prises, limite(objet.sorte))
         prises.add(nouveau)
         if nouveau == objet.nom:
@@ -145,7 +170,8 @@ def auditer(
         conforme,
         supprimes,
         orphelin_ids,
-        {renommage.ancien: renommage for renommage in renommages},
+        {(renommage.sorte, renommage.ancien): renommage for renommage in renommages},
+        commentaires,
     )
     return Resultat(
         inventaire=inventaire,
@@ -162,24 +188,31 @@ def _non_conformes(
     conforme: Callable[[Objet], bool],
     supprimes: dict[tuple[str, str], Objet],
     orphelin_ids: set[tuple[str, str]],
-    renommages: dict[str, Renommage],
+    renommages: dict[tuple[str, str], Renommage],
+    commentaires: dict[tuple[str, str], str],
 ) -> tuple[NonConforme, ...]:
     trouves: list[NonConforme] = []
     for objet in inventaire.objets:
         if conforme(objet):
             continue
         cle = (objet.sorte, objet.nom)
-        renommage = renommages.get(objet.nom)
+        renommage = renommages.get(cle)
         if cle in orphelin_ids:
             traitement, propose = "retrait", None
         elif cle in supprimes:
             traitement, propose = "fusion", None
-        elif renommage is not None and renommage.sorte == objet.sorte:
+        elif renommage is not None:
             traitement, propose = "renommage", renommage.nouveau
         else:
             traitement, propose = "revoir", None
         trouves.append(
-            NonConforme(sorte=objet.sorte, nom=objet.nom, traitement=traitement, nom_propose=propose)
+            NonConforme(
+                sorte=objet.sorte,
+                nom=objet.nom,
+                traitement=traitement,
+                nom_propose=propose,
+                commentaire=commentaires.get(cle) if traitement == "revoir" else None,
+            )
         )
     return tuple(sorted(trouves, key=lambda item: (item.sorte, item.nom)))
 
@@ -215,3 +248,9 @@ def _index_references(inventaire: Inventaire) -> dict[tuple[str, str], set[str]]
         pointer(lien.origine, "calendrier", lien.calendriers)
         pointer(lien.origine, "pool", lien.pools)
     return refs
+
+
+def _commentaire(sorte: str, site: str, zone: str) -> str:
+    manques = [libelle for libelle, valeur in (("site", site), ("zone", zone)) if valeur == CTX]
+    raison = _RAISONS.get(sorte, "aucune correspondance")
+    return f"{' et '.join(manques)} introuvable{'s' if len(manques) > 1 else ''} : {raison}"

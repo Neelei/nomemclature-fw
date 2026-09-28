@@ -30,11 +30,11 @@ def test_exemple_stormshield(racine, contextes, referentiel):
         ("reseau", "Vlan210", "NET_GRAS_LAN_VLAN210"),
     ]
     assert [(item.sorte, item.conserve, item.supprimes, item.references_reecrites) for item in resultat.fusions] == [
-        ("calendrier", "SCH_CTX_LAN_BUREAU", ("Bureau",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("calendrier", "SCH_BUREAU", ("Bureau",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("groupe-adresses", "GRP_SIEGE_DMZ_WEB", ("Groupe_Web",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("hote", "HST_SIEGE_DMZ_WEB-01", ("Web_DMZ",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("reseau", "NET_SIEGE_LAN_UTILISATEURS", ("LAN_Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("service", "SVC_TCP_443", ("HTTPS_custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("service", "SVC_HTTPS", ("HTTPS_custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
     ]
     assert resultat.fusions[2].contenu == "10.1.1.10/32"
     assert [(item.sorte, item.nom) for item in resultat.retraits] == [
@@ -44,21 +44,21 @@ def test_exemple_stormshield(racine, contextes, referentiel):
     ]
     assert "HST_SIEGE_LAN_LEGACY" not in {item.nom for item in resultat.retraits}
     assert "RNG_SIEGE_WAN_NAT" not in {item.nom for item in resultat.retraits}
-    assert "FQDN_CTX_WAN_UPDATES" not in {item.nom for item in resultat.retraits}
+    assert "FQDN_SIEGE_WAN_UPDATES" not in {item.nom for item in resultat.retraits}
     assert "nat-sortant" not in {regle.nom for regle in inventaire.regles}
 
 
 def test_plage_de_ports_et_protocole(contextes):
     texte = """
-service,SVC_TCP_HAUTE,tcp,,2000,2032,""
+service,SVC_PLAGE-HAUTE,tcp,,2000,2032,""
 protocol,ospf,89,"OSPF"
 """
     objets, ignores = lire_objets(texte)
     assert ignores == ()
     par_nom = {objet.nom: objet for objet in objets}
-    assert par_nom["SVC_TCP_HAUTE"].detail == "tcp/2000-2032"
+    assert par_nom["SVC_PLAGE-HAUTE"].detail == "tcp/2000-2032"
     assert par_nom["ospf"].detail == "ip/89"
-    assert est_conforme_objet("SVC_TCP_HAUTE", "service", contextes)
+    assert est_conforme_objet("SVC_PLAGE-HAUTE", "service", contextes)
 
 
 def test_hote_double_pile(contextes, referentiel):

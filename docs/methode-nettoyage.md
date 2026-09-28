@@ -12,7 +12,9 @@ Un objet utilisé seulement par une règle désactivée n'est pas orphelin.
 
 Le contenu (adresse, membres, ports, action, source, destination, service) reste celui de l'export. Le nom proposé suit [la nomenclature](nomenclature.md).
 
-Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Hors référentiel, la zone vient de l'ancien nom et le site vaut `CTX`. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Le détail est dans [la nomenclature](nomenclature.md#déduction).
+Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Un réseau dont le VLAN est connu (FortiGate) porte `VLAN{ID}` dans son détail. Services, groupes de services et calendriers n'ont ni site ni zone et gardent le libellé de leur ancien nom (`SVC_HTTP-8080`). Le détail est dans [la nomenclature](nomenclature.md#déduction).
+
+Un objet d'adresse sans correspondance de site ou de zone n'est **pas renommé** : il est listé à revoir, avec un commentaire qui dit ce qui manque. Compléter `reseaux.csv` puis relancer l'audit.
 
 L'outil ne renomme pas un objet qui part en fusion, ni un orphelin : le retrait ou la fusion suffit. Le rapport Markdown les montre quand même dans les noms non conformes, avec le traitement prévu.
 
@@ -79,7 +81,7 @@ reseau;site;zone
 10.210.0.0/24;gras;lan
 ```
 
-Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv). Un réseau invalide, une zone absente de `contextes.txt` ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et tous les sites proposés valent `CTX`.
+Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv). Un réseau invalide, une zone absente de `contextes.txt` ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et les objets d'adresse non conformes sont tous listés à revoir.
 
 ### FortiGate
 
@@ -123,9 +125,9 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Exporter deux CSV, et �
 ```text
 host,HST_SIEGE_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
 network,NET_SIEGE_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
-service,SVC_TCP_443,tcp,443,,,"HTTPS"
+service,SVC_HTTPS,tcp,443,,,"HTTPS"
 group,GRP_SIEGE_DMZ_WEB,"HST_SIEGE_DMZ_WEB-01",""
-time,SCH_CTX_LAN_BUREAU,08:00-18:00,monday-friday,,""
+time,SCH_BUREAU,08:00-18:00,monday-friday,,""
 ```
 
 **Règles de filtrage** — CSV avec en-tête, virgule ou point-virgule. Une ligne `nat` (colonne `type` ou action `nat`) n'est pas auditée comme une règle : elle sert uniquement à connaître les objets qu'elle cite.
@@ -157,7 +159,7 @@ Un dossier qui contient ces CSV marche aussi : `fwclean audit inbox/ --sortie ou
 
 Dans le dossier `--sortie` (défaut `out/`, ignoré par git) :
 
-- `rapport.md` — référentiel réseaux utilisé, noms non conformes, doublons, orphelins, compteurs ;
+- `rapport.md` — référentiel réseaux utilisé, noms non conformes (avec un commentaire pour ceux à revoir), doublons, orphelins, compteurs ;
 - `plan.json` — la proposition, et rien d'autre.
 
 Clés du plan :
@@ -170,6 +172,7 @@ Clés du plan :
 | `renommages` | `sorte`, `ancien`, `nouveau`, `references` |
 | `fusions` | `sorte`, `contenu`, `conserve`, `nouveau_nom`, `supprimes`, `references_reecrites` |
 | `retraits` | `sorte`, `nom`, `motif` (`aucune reference`) |
+| `a_revoir` | `sorte`, `nom`, `commentaire` : objets non conformes sans nom proposé (site ou zone introuvable) |
 
 `nouveau_nom` est le nom de l'objet conservé après un éventuel renommage. Il est identique à `conserve` quand le nom était déjà conforme.
 

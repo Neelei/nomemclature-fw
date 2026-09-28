@@ -164,9 +164,13 @@ end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes, referentiel)
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("partenaire", "HST_CTX_CTX_PARTENAIRE"),
         ("zabbix_srv", "HST_SIEGE_LAN_ZABBIX-SRV"),
     ]
+    a_revoir = {item.nom: item for item in resultat.non_conformes if item.traitement == "revoir"}
+    assert a_revoir["partenaire"].nom_propose is None
+    assert a_revoir["partenaire"].commentaire == (
+        "site et zone introuvables : adresse absente de reseaux.csv"
+    )
     assert all(item.sorte != "regle" for item in resultat.non_conformes)
     assert "sites : GRAS, SIEGE" in resultat.referentiel
 
@@ -185,7 +189,8 @@ config firewall addrgrp
 end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes)
-    assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("HST_SIEGE_DMZ_WEB-01", "HST_CTX_DMZ_WEB-01"),
-    ]
-    assert resultat.referentiel == "aucun (sites en CTX)"
+    assert resultat.renommages == ()
+    item = next(item for item in resultat.non_conformes if item.nom == "HST_SIEGE_DMZ_WEB-01")
+    assert item.traitement == "revoir"
+    assert item.commentaire == "site introuvable : adresse absente de reseaux.csv"
+    assert resultat.referentiel == "aucun : objets à adresse IP signalés à revoir"

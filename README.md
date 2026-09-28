@@ -51,7 +51,7 @@ reseau;site;zone
 10.1.1.0/24;siege;dmz
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Hors référentiel, le site vaut `CTX` et la zone vient de l'ancien nom. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`.
+Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Sur FortiGate, un réseau porte son VLAN ID (`NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`). Services, groupes de services et calendriers n'ont ni site ni zone et gardent leur libellé (`SVC_HTTP-8080`, `SCH_BUREAU`).
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
 
@@ -59,7 +59,7 @@ Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour
 cp reseaux.exemple.csv reseaux.csv
 ```
 
-puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et propose `CTX` comme site. Les zones autorisées (`lan`, `dmz`, `wan`, `vpn`, `mgmt`, `bastion`, …, reprises des zones FortiGate) sont dans `contextes.txt`.
+puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et liste les objets d'adresse à revoir. Les zones autorisées (`lan`, `dmz`, `wan`, `vpn`, `mgmt`, `bastion`, …, reprises des zones FortiGate) sont dans `contextes.txt`.
 
 La commande affiche les compteurs et écrit :
 
@@ -75,7 +75,7 @@ uv run fwclean audit examples/fortigate/nomenclature.conf --reseaux reseaux.exem
 uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie out/stormshield
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`.
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_APPLI-METIER-8443`.
 
 ## Tests
 
@@ -85,4 +85,4 @@ uv run pytest
 
 ## Premier passage sur un export réel
 
-Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms en `CTX` restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_SIEGE_DMZ_WEB-01`). Ce passage ne sert pas à réécrire les règles.
+Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_SIEGE_DMZ_WEB-01`). Ce passage ne sert pas à réécrire les règles.

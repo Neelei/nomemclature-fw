@@ -53,6 +53,11 @@ def plan_dict(resultat: Resultat) -> dict:
             {"sorte": item.sorte, "nom": item.nom, "motif": item.motif}
             for item in resultat.retraits
         ],
+        "a_revoir": [
+            {"sorte": item.sorte, "nom": item.nom, "commentaire": item.commentaire}
+            for item in resultat.non_conformes
+            if item.traitement == "revoir"
+        ],
     }
 
 
@@ -92,15 +97,16 @@ def _markdown(resultat: Resultat) -> str:
     if resultat.non_conformes:
         lignes.extend(
             [
-                "| Sorte | Nom | Traitement | Nom proposé |",
-                "| --- | --- | --- | --- |",
+                "| Sorte | Nom | Traitement | Nom proposé | Commentaire |",
+                "| --- | --- | --- | --- | --- |",
             ]
         )
         for item in resultat.non_conformes:
             propose = item.nom_propose or "—"
+            commentaire = item.commentaire or ""
             lignes.append(
                 f"| {_cell(LIBELLE.get(item.sorte, item.sorte))} | {_cell(item.nom)} | "
-                f"{_cell(item.traitement)} | {_cell(propose)} |"
+                f"{_cell(item.traitement)} | {_cell(propose)} | {_cell(commentaire)} |"
             )
     else:
         lignes.append("Aucun.")

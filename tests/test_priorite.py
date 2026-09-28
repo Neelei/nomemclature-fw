@@ -15,7 +15,7 @@ def _regle(nom: str, destination: str) -> Regle:
         active=True,
         sources=("NET_SIEGE_LAN_UTILISATEURS",),
         destinations=(destination,),
-        services=("SVC_TCP_443",),
+        services=("SVC_HTTPS",),
         interfaces_source=("lan",),
         interfaces_destination=("dmz",),
     )
@@ -53,7 +53,7 @@ def test_le_conforme_gagne_meme_moins_reference(racine):
 def test_le_plus_reference_puis_renommage(racine):
     resultat = _auditer(
         racine,
-        [_hote("Serveur_DMZ"), _hote("srv")],
+        [_hote("Serveur_DMZ", "10.1.1.50"), _hote("srv", "10.1.1.50")],
         [
             _regle("ALLOW_SIEGE_LAN_DMZ_UN", "Serveur_DMZ"),
             _regle("ALLOW_SIEGE_LAN_DMZ_DEUX", "Serveur_DMZ"),
@@ -62,10 +62,10 @@ def test_le_plus_reference_puis_renommage(racine):
         ],
     )
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("Serveur_DMZ", "HST_CTX_DMZ_SERVEUR"),
+        ("Serveur_DMZ", "HST_SIEGE_DMZ_SERVEUR"),
     ]
     assert resultat.fusions[0].conserve == "Serveur_DMZ"
-    assert resultat.fusions[0].nouveau_nom == "HST_CTX_DMZ_SERVEUR"
+    assert resultat.fusions[0].nouveau_nom == "HST_SIEGE_DMZ_SERVEUR"
     assert resultat.fusions[0].supprimes == ("srv",)
     assert resultat.retraits == ()
 

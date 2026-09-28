@@ -23,21 +23,24 @@ def test_exemple_fortigate(racine, contextes, referentiel):
         "Web_DMZ",
         "web_dmz_backup",
         "srv-oublie",
+        "partenaire",
+        "Appli metier 8443",
     }
     assert [(item.sorte, item.ancien, item.nouveau) for item in resultat.renommages] == [
         ("groupe-adresses", "Clients web", "GRP_MULTI_LAN_CLIENTS-WEB"),
         ("hote", "web_dmz_backup", "HST_SIEGE_DMZ_WEB-BACKUP"),
         ("reseau", "Vlan210", "NET_GRAS_LAN_VLAN210"),
+        ("service", "Appli metier 8443", "SVC_APPLI-METIER-8443"),
     ]
     assert resultat.renommages[1].references == ("Acces web",)
     assert [(item.sorte, item.conserve, item.supprimes, item.references_reecrites) for item in resultat.fusions] == [
-        ("calendrier", "SCH_CTX_LAN_BUREAU", ("Bureau",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("fqdn", "FQDN_CTX_WAN_UPDATES", ("updates.example.com",), ("route 1",)),
+        ("calendrier", "SCH_BUREAU", ("Bureau",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("fqdn", "FQDN_SIEGE_WAN_UPDATES", ("updates.example.com",), ("route 1",)),
         ("groupe-adresses", "GRP_SIEGE_DMZ_WEB", ("Groupe Web",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("hote", "HST_SIEGE_DMZ_WEB-01", ("Web_DMZ",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("pool", "POOL_SIEGE_WAN_SORTANT", ("SNAT_POOL",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("reseau", "NET_SIEGE_LAN_UTILISATEURS", ("LAN Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("service", "SVC_TCP_443", ("HTTPS custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("reseau", "NET_SIEGE_LAN_VLAN10-UTILISATEURS", ("LAN Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("service", "SVC_HTTPS", ("HTTPS custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
     ]
     assert resultat.fusions[3].contenu == "10.1.1.10/32"
     assert resultat.fusions[5].contenu == "10.0.0.0/24"
@@ -88,7 +91,7 @@ config firewall address
     next
 end
 config firewall schedule onetime
-    edit "SCH_CTX_WAN_MAINTENANCE"
+    edit "SCH_MAINTENANCE"
         set start 00:00 2026/01/01
         set end 06:00 2026/01/01
     next
@@ -100,8 +103,8 @@ end
     assert "France" not in {item.nom for item in resultat.retraits}
     assert resultat.fusions[0].conserve == "HST_SIEGE_DMZ_WEB-01"
     assert resultat.fusions[0].supprimes == ("Web_DMZ",)
-    assert "SCH_CTX_WAN_MAINTENANCE" not in {item.nom for item in resultat.non_conformes}
-    assert "SCH_CTX_WAN_MAINTENANCE" in {item.nom for item in resultat.retraits}
+    assert "SCH_MAINTENANCE" not in {item.nom for item in resultat.non_conformes}
+    assert "SCH_MAINTENANCE" in {item.nom for item in resultat.retraits}
 
 
 def test_objets_systeme_et_protocoles_reels(contextes, referentiel):
@@ -159,3 +162,59 @@ end
     assert "tcp/0-65535" in webproxy.detail
     resultat = auditer(inventaire, contextes, referentiel)
     assert "HST_SIEGE_DMZ_WEB-01" not in {item.nom for item in resultat.retraits}
+
+
+def test_vlan_des_reseaux(contextes, referentiel):
+    texte = """
+config system interface
+    edit "VLAN-11"
+        set ip 10.1.2.254 255.255.255.0
+        set interface "LACP-LAN"
+        set vlanid 11
+        config ipv6
+            set ip6-address ::/0
+        end
+    next
+    edit "IDRAC"
+        set vlanid 131
+        set interface "LACP-LAN"
+    next
+    edit "port1"
+        set ip 10.1.1.254 255.255.255.0
+    next
+end
+config firewall address
+    edit "SRV-ESX [vlan11]"
+        set subnet 10.1.2.0 255.255.255.0
+    next
+    edit "sous-reseau-esx"
+        set subnet 10.1.2.128 255.255.255.128
+    next
+    edit "IDRAC address"
+        set type interface-subnet
+        set subnet 10.118.131.0 255.255.255.0
+        set interface "IDRAC"
+    next
+    edit "dmz-sans-vlan"
+        set subnet 10.1.1.0 255.255.255.0
+    next
+end
+config firewall addrgrp
+    edit "tous"
+        set member "SRV-ESX [vlan11]" "sous-reseau-esx" "IDRAC address" "dmz-sans-vlan"
+    next
+end
+"""
+    inventaire = lire_fortigate(texte, "memoire")
+    vlans = {objet.nom: objet.vlan for objet in inventaire.objets if objet.sorte == "reseau"}
+    assert vlans == {
+        "SRV-ESX [vlan11]": 11,
+        "sous-reseau-esx": 11,
+        "IDRAC address": 131,
+        "dmz-sans-vlan": None,
+    }
+    resultat = auditer(inventaire, contextes, referentiel)
+    noms = {item.ancien: item.nouveau for item in resultat.renommages}
+    assert noms["SRV-ESX [vlan11]"] == "NET_SIEGE_LAN_VLAN11-SRV-ESX"
+    assert noms["dmz-sans-vlan"] == "NET_SIEGE_DMZ_SANS-VLAN"
+    assert "IDRAC address" not in noms

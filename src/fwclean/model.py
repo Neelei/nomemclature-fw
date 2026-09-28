@@ -19,6 +19,7 @@ class Objet:
     mentions_services: tuple[str, ...] = ()
     mentions_calendriers: tuple[str, ...] = ()
     mentions_pools: tuple[str, ...] = ()
+    vlan: int | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ class NonConforme:
     nom: str
     traitement: str
     nom_propose: str | None
+    commentaire: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,4 +98,4 @@ class Resultat:
     renommages: tuple[Renommage, ...]
     fusions: tuple[Fusion, ...]
     retraits: tuple[Retrait, ...]
-    referentiel: str = "aucun (sites en CTX)"
+    referentiel: str = "aucun : objets à adresse IP signalés à revoir"

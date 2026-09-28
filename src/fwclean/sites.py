@@ -66,7 +66,7 @@ class Referentiel:
 
     def decrire(self) -> str:
         if not self.entrees:
-            return "aucun (sites en CTX)"
+            return "aucun : objets à adresse IP signalés à revoir"
         sites = ", ".join(site.upper() for site in self.sites)
         origine = f"{self.source} — " if self.source else ""
         return f"{origine}{len(self.entrees)} réseaux, sites : {sites}"
