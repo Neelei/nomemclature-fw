@@ -348,7 +348,9 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
         ]
     )
     assert code == 0
-    assert "orphelins : 2." in capsys.readouterr().out
+    console = capsys.readouterr().out
+    assert "orphelins : 2." in console
+    assert "Objets natifs SNS ignorés : 5." in console
     plan = json.loads((sortie / "plan.json").read_text(encoding="utf-8"))
     assert [item["nom"] for item in plan["retraits"]] == ["grp_oublie", "esp_ancien"]
     assert plan["avertissements"]["retraits_suspendus"] is None

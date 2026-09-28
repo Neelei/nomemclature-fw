@@ -163,6 +163,8 @@ def _auditer(args: argparse.Namespace) -> int:
         f"doublons : {len(resultat.fusions)}, "
         f"orphelins : {'suspendus' if resultat.inventaire.retraits_suspendus else len(resultat.retraits)}."
     )
+    if resultat.inventaire.constructeur == "stormshield":
+        print(f"Objets natifs SNS ignorés : {len(resultat.natifs)}.")
     for message in resultat.inventaire.avertissements:
         print(f"Avertissement : {message}")
     print("Aucune modification appliquée.")
