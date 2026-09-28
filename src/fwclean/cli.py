@@ -13,7 +13,7 @@ from fwclean.charger import charger
 from fwclean.model import ErreurLecture
 from fwclean.naming import lire_contextes, lire_correspondances
 from fwclean.report import ecrire
-from fwclean.reseaux import ecrire_reseaux, reseaux_connectes, reseaux_sns
+from fwclean.reseaux import Completion, completer_reseaux, ecrire_reseaux, reseaux_connectes, reseaux_sns
 from fwclean.script import generer_script
 from fwclean.sites import Referentiel, lire_reseaux
 from fwclean.stormshield_natif import genre_natif
@@ -100,7 +100,17 @@ def executer(argv: list[str] | None = None) -> int:
     )
     reseaux.add_argument("--site", required=True, help="Site de ce firewall, en minuscules (ex. siege)")
     reseaux.add_argument("--sortie", default="reseaux.csv", help="Fichier écrit (défaut : ./reseaux.csv)")
-    reseaux.add_argument("--ecraser", action="store_true", help="Remplacer le fichier s'il existe")
+    remplacement = reseaux.add_mutually_exclusive_group()
+    remplacement.add_argument("--ecraser", action="store_true", help="Remplacer le fichier s'il existe")
+    remplacement.add_argument(
+        "--ajouter",
+        action="store_true",
+        help=(
+            "Compléter le fichier existant : ajoute les seuls réseaux absents, garde les lignes "
+            "et commentaires existants, signale sans les modifier les réseaux déjà présents "
+            "avec un autre site, zone ou VLAN"
+        ),
+    )
     reseaux.add_argument("--contextes", help="Fichier des zones (défaut : ./contextes.txt)")
 
     script = sous.add_parser(
@@ -186,8 +196,12 @@ def _reseaux(args: argparse.Namespace) -> int:
         else:
             contextes, correspondances = _CONTEXTES_DEFAUT, {}
         sortie = Path(args.sortie)
-        if sortie.exists() and not args.ecraser:
-            raise ErreurLecture(f"{sortie} existe déjà : relancer avec --ecraser pour le remplacer.")
+        completer = args.ajouter and sortie.exists()
+        if sortie.exists() and not (args.ecraser or completer):
+            raise ErreurLecture(
+                f"{sortie} existe déjà : relancer avec --ajouter pour le compléter "
+                "ou --ecraser pour le remplacer."
+            )
         source = _source_reseaux(Path(args.chemin))
         contenu = source.read_text(encoding="utf-8-sig")
         if not source.suffix and genre_natif(source.name, contenu) == "network":
@@ -196,10 +210,17 @@ def _reseaux(args: argparse.Namespace) -> int:
         else:
             constructeur = "fortigate"
             lignes = reseaux_connectes(contenu, contextes, correspondances)
-        texte = ecrire_reseaux(lignes, args.site, source.name, contextes, constructeur)
+        if completer:
+            completion = completer_reseaux(
+                sortie.read_text(encoding="utf-8-sig"), lignes, args.site, source.name, contextes, constructeur
+            )
+        else:
+            texte = ecrire_reseaux(lignes, args.site, source.name, contextes, constructeur)
     except (ErreurLecture, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    if completer:
+        return _afficher_completion(sortie, completion)
     sortie.write_text(texte, encoding="utf-8")
     sans_zone = [ligne for ligne in lignes if ligne.zone is None]
     print(f"Référentiel : {sortie}")
@@ -209,6 +230,26 @@ def _reseaux(args: argparse.Namespace) -> int:
     desactivees = [ligne for ligne in lignes if ligne.desactivee and ligne.zone is not None]
     if desactivees:
         print(f"Interfaces désactivées, laissées en commentaire : {len(desactivees)}.")
+    return 0
+
+
+def _afficher_completion(sortie: Path, completion: Completion) -> int:
+    if completion.ajoutees:
+        sortie.write_text(completion.texte, encoding="utf-8")
+    print(f"Référentiel complété : {sortie}")
+    print(
+        f"Ajoutés : {len(completion.ajoutees)}, déjà présents : {len(completion.presentes)}, "
+        f"différents (non modifiés) : {len(completion.differentes)}, "
+        f"écartés : {len(completion.ecartees)}."
+    )
+    for libelle, liste in (
+        ("ajouté", completion.ajoutees),
+        ("déjà présent", completion.presentes),
+        ("différent, non modifié", completion.differentes),
+        ("écarté", completion.ecartees),
+    ):
+        for ligne in liste:
+            print(f"  {libelle} : {ligne}")
     return 0
 
 

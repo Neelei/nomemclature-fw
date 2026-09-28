@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from fwclean.fortigate import blocs
 from fwclean.model import ErreurLecture
 from fwclean.naming import cle_correspondance
-from fwclean.sites import analyser_reseaux
+from fwclean.sites import ENTETE_VLAN, Entree, analyser_reseaux
 from fwclean.stormshield_natif import interfaces_natives, reseaux_interface
 
 _SECTIONS = frozenset({"system interface", "system zone", "system sdwan members"})
@@ -152,6 +152,74 @@ def ecrire_reseaux(
     texte += "\n"
     analyser_reseaux(texte, contextes)
     return texte
+
+
+@dataclass(frozen=True)
+class Completion:
+    texte: str
+    ajoutees: tuple[str, ...]
+    presentes: tuple[str, ...]
+    differentes: tuple[str, ...]
+    ecartees: tuple[str, ...]
+
+
+def completer_reseaux(
+    existant: str,
+    lignes: Sequence[Ligne],
+    site: str,
+    source: str,
+    contextes: Sequence[str],
+    constructeur: str = "fortigate",
+) -> Completion:
+    """Ajoute à un reseaux.csv existant les seuls réseaux absents ; le reste du fichier est gardé tel quel."""
+    site = site.strip().lower()
+    entrees = {entree.reseau: entree for entree in analyser_reseaux(existant, contextes).entrees}
+    avec_vlan = _entete(existant) == ENTETE_VLAN
+    ajoutees: list[str] = []
+    presentes: list[str] = []
+    differentes: list[str] = []
+    ecartees: list[str] = []
+    for ligne in lignes:
+        origine = _origine(ligne, constructeur)
+        reseau = ipaddress.ip_network(ligne.reseau, strict=False)
+        if ligne.zone is None:
+            ecartees.append(f"{ligne.reseau} ({ligne.zone_fortigate or ligne.interface}) : zone non traduite")
+            continue
+        if ligne.desactivee:
+            ecartees.append(f"{ligne.reseau} ({origine}) : interface désactivée")
+            continue
+        existante = entrees.get(reseau)
+        if existante is not None:
+            vlan = "" if existante.vlan is None else str(existante.vlan)
+            actuel = f"{existante.site};{existante.zone};{vlan}"
+            voulu = f"{site};{ligne.zone};{'' if ligne.vlan is None else ligne.vlan}"
+            if (existante.site, existante.zone) != (site, ligne.zone) or (
+                avec_vlan and existante.vlan != ligne.vlan
+            ):
+                differentes.append(f"{reseau} : fichier {actuel}, interface {origine} {voulu}")
+            else:
+                presentes.append(f"{reseau} ({origine})")
+            continue
+        champs = [ligne.reseau, site, ligne.zone]
+        if avec_vlan:
+            champs.append("" if ligne.vlan is None else str(ligne.vlan))
+        ajoutees.append(f"{';'.join(champs)}  # {origine}")
+        entrees[reseau] = Entree(reseau=reseau, site=site, zone=ligne.zone, vlan=ligne.vlan)
+    texte = existant
+    if ajoutees:
+        if texte and not texte.endswith("\n"):
+            texte += "\n"
+        texte += "\n".join(["", f"# Ajouté par fwclean reseaux --ajouter depuis {source} :", *ajoutees]) + "\n"
+        analyser_reseaux(texte, contextes)
+    return Completion(texte, tuple(ajoutees), tuple(presentes), tuple(differentes), tuple(ecartees))
+
+
+def _entete(texte: str) -> tuple[str, ...] | None:
+    for brut in texte.splitlines():
+        ligne = brut.split("#", 1)[0].strip()
+        if ligne:
+            return tuple(champ.strip().lower() for champ in ligne.split(";"))
+    return None
 
 
 def _origine(ligne: Ligne, constructeur: str) -> str:

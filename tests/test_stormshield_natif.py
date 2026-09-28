@@ -8,7 +8,7 @@ from fwclean.charger import charger
 from fwclean.cli import executer
 from fwclean.model import ErreurLecture, Inventaire, Objet
 from fwclean.naming import analyser_contextes, cle_correspondance
-from fwclean.reseaux import ecrire_reseaux, reseaux_sns
+from fwclean.reseaux import completer_reseaux, ecrire_reseaux, reseaux_sns
 from fwclean.sites import analyser_reseaux, appliquer_vlans
 from fwclean.stormshield_natif import (
     AVERTISSEMENT_NON_GERES,
@@ -360,3 +360,38 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
     assert "## Objets natifs SNS ignorés" in rapport
     assert {"sorte": "reseau", "nom": "IANA_v6_doc"} in plan["natifs_ignores"]
     assert "**À vérifier avant chaque suppression** : « Vérifier l'utilisation »" in rapport
+
+
+def test_reseaux_ajouter_complete_sans_ecraser(racine, tmp_path, capsys, monkeypatch):
+    (tmp_path / "contextes.txt").write_text("lan\ndmz\nwan = out\n", encoding="utf-8")
+    existant = (
+        "# Référentiel relu à la main.\n"
+        "reseau;site;zone;vlan\n"
+        "10.210.0.0/24;gras;lan;  # site distant ajouté à la main\n"
+        "203.0.113.0/24;siege;dmz;\n"
+    )
+    (tmp_path / "reseaux.csv").write_text(existant, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    source = str(racine / "examples" / "stormshield-natif")
+    assert executer(["reseaux", source, "--site", "siege", "--ajouter"]) == 0
+    sortie = capsys.readouterr().out
+    texte = (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
+    assert texte.startswith(existant)
+    assert texte.endswith("10.0.0.0/24;siege;lan;10  # LAN (vlan0)\n")
+    assert "Ajoutés : 1, déjà présents : 0, différents (non modifiés) : 1, écartés : 1." in sortie
+    assert "203.0.113.0/24 : fichier siege;dmz;, interface out (ethernet0) siege;wan;" in sortie
+    assert executer(["reseaux", source, "--site", "siege", "--ajouter"]) == 0
+    assert "Ajoutés : 0, déjà présents : 1" in capsys.readouterr().out
+    assert (tmp_path / "reseaux.csv").read_text(encoding="utf-8") == texte
+    with pytest.raises(SystemExit):
+        executer(["reseaux", source, "--site", "siege", "--ajouter", "--ecraser"])
+    assert executer(["reseaux", source, "--site", "siege"]) == 2
+    assert "--ajouter" in capsys.readouterr().err
+
+
+def test_reseaux_ajouter_entete_sans_vlan(contextes):
+    lignes = reseaux_sns(NETWORK, contextes, {})
+    existant = "reseau;site;zone\n10.210.0.0/24;gras;lan\n"
+    completion = completer_reseaux(existant, lignes, "siege", "Network", contextes, "stormshield")
+    assert "10.0.0.0/24;siege;lan  # LAN (vlan0)" in completion.texte
+    analyser_reseaux(completion.texte, contextes)
