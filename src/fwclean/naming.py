@@ -57,7 +57,7 @@ LIBELLE_CONSTRUCTEUR = {
     "stormshield": "Stormshield",
 }
 
-PROTOCOLES = frozenset({"tcp", "udp", "icmp", "ip", "sctp", "any"})
+PROTOCOLES = frozenset({"tcp", "udp", "icmp", "icmp6", "ip", "sctp", "any"})
 
 _FORME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
@@ -177,7 +177,7 @@ def proposer_service(empreinte: tuple) -> str:
     morceaux: list[str] = []
     for protocole, plages in empreinte:
         for debut, fin, src_debut, src_fin in plages:
-            if protocole == "icmp":
+            if protocole in {"icmp", "icmp6"}:
                 if debut < 0:
                     morceaux.append("any")
                 else:

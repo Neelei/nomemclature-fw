@@ -106,3 +106,60 @@ end
     assert resultat.fusions[0].supprimes == ("Web_DMZ",)
     assert "sch-wan-maintenance" not in {item.nom for item in resultat.non_conformes}
     assert "sch-wan-maintenance" in {item.nom for item in resultat.retraits}
+
+
+def test_objets_systeme_et_protocoles_reels(racine):
+    """Cas rencontrés sur un export FortiGate 7.4 réel (all sans subnet, ICMP6, ALL)."""
+    texte = """
+config firewall address
+    edit "all"
+    next
+    edit "FABRIC_DEVICE"
+        set comment "IPv4 addresses of Fabric Devices."
+    next
+    edit "hst-dmz-web-01"
+        set subnet 10.1.1.10 255.255.255.255
+    next
+end
+config firewall service custom
+    edit "PING6"
+        set protocol ICMP6
+        set icmptype 128
+    next
+    edit "webproxy"
+        set protocol ALL
+        set tcp-portrange 0-65535:0-65535
+    next
+    edit "ALL"
+        set protocol IP
+    next
+end
+config firewall policy
+    edit 1
+        set name "allow-wan-dmz-https"
+        set srcintf "wan"
+        set dstintf "dmz"
+        set action accept
+        set srcaddr "all"
+        set dstaddr "hst-dmz-web-01"
+        set schedule "always"
+        set service "PING6" "webproxy" "ALL"
+    next
+end
+"""
+    inventaire = lire_fortigate(texte, "memoire")
+    noms = {objet.nom for objet in inventaire.objets}
+    assert "all" not in noms
+    assert "FABRIC_DEVICE" not in noms
+    assert any("all" in ignore for ignore in inventaire.ignores)
+    assert any("FABRIC_DEVICE" in ignore for ignore in inventaire.ignores)
+    assert "hst-dmz-web-01" in noms
+    assert "PING6" in noms
+    assert "webproxy" in noms
+    assert "ALL" in noms
+    ping6 = next(objet for objet in inventaire.objets if objet.nom == "PING6")
+    assert ping6.detail == "icmp6/128"
+    webproxy = next(objet for objet in inventaire.objets if objet.nom == "webproxy")
+    assert "tcp/0-65535" in webproxy.detail
+    resultat = auditer(inventaire, _contextes(racine))
+    assert "hst-dmz-web-01" not in {item.nom for item in resultat.retraits}

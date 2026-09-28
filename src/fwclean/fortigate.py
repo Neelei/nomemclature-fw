@@ -118,7 +118,8 @@ def _adresse(nom: str, data: dict[str, list[str]]) -> tuple[Objet | None, str | 
         return None, f"{nom} ({type_objet}, ignoré)"
     subnet = decouper_subnet(data.get("subnet", []))
     if subnet is None:
-        raise ErreurLecture(f"Adresse sans sous-réseau lisible : {nom}")
+        # Objets système FortiGate (all, FABRIC_DEVICE, …) : pas de subnet exploitable.
+        return None, f"{nom} (ipmask sans subnet, ignoré)"
     adresse, prefixe = subnet
     detail = detail_ip(adresse, prefixe)
     if est_hote(adresse, prefixe):
@@ -149,7 +150,7 @@ def _groupe(nom: str, data: dict[str, list[str]]) -> Objet:
 def _service(nom: str, data: dict[str, list[str]]) -> Objet:
     protocole = (data.get("protocol") or ["TCP/UDP/SCTP"])[0].upper()
     elements: list[tuple[str, tuple[tuple[int, int, int, int], ...]]] = []
-    if protocole in {"TCP/UDP/SCTP", "TCP", "UDP", "SCTP"}:
+    if protocole in {"TCP/UDP/SCTP", "TCP", "UDP", "SCTP", "ALL"}:
         for cle, proto in (
             ("tcp-portrange", "tcp"),
             ("udp-portrange", "udp"),
@@ -157,10 +158,11 @@ def _service(nom: str, data: dict[str, list[str]]) -> Objet:
         ):
             if data.get(cle):
                 elements.append((proto, parser_plages_ports(" ".join(data[cle]))))
-    elif protocole == "ICMP":
+    elif protocole in {"ICMP", "ICMP6"}:
         type_icmp = int((data.get("icmptype") or ["-1"])[0])
         code = int((data.get("icmpcode") or ["-1"])[0])
-        elements.append(("icmp", ((type_icmp, code, -1, -1),)))
+        cle_proto = "icmp6" if protocole == "ICMP6" else "icmp"
+        elements.append((cle_proto, ((type_icmp, code, -1, -1),)))
     elif protocole == "IP":
         numero = int((data.get("protocol-number") or ["0"])[0])
         elements.append(("ip", ((numero, numero, -1, -1),)))

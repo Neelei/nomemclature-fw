@@ -169,11 +169,11 @@ def detail_service(empreinte: tuple) -> str:
     morceaux: list[str] = []
     for proto, plages in empreinte:
         for debut, fin, src_debut, src_fin in plages:
-            if proto == "icmp":
+            if proto in {"icmp", "icmp6"}:
                 if debut < 0:
-                    morceaux.append("icmp")
+                    morceaux.append(proto)
                 else:
-                    morceaux.append(f"icmp/{debut}")
+                    morceaux.append(f"{proto}/{debut}")
                 continue
             coeur = f"{proto}/{debut}" if debut == fin else f"{proto}/{debut}-{fin}"
             if src_debut >= 0:
