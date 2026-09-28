@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from fwclean.model import (
     Fusion,
@@ -20,6 +20,7 @@ from fwclean.naming import (
     PREFIXE,
     est_conforme_objet,
     est_conforme_regle,
+    longueur_max,
     proposer_objet,
     proposer_regle,
     proposer_service,
@@ -40,8 +41,14 @@ def auditer(
     localisateur = Localisateur(inventaire, contextes, referentiel)
     refs = _index_references(inventaire)
 
+    def limite(sorte: str) -> int:
+        return longueur_max(inventaire.constructeur, sorte)
+
     def conforme(objet: Objet) -> bool:
-        return est_conforme_objet(objet.nom, objet.sorte, contextes, sites)
+        return est_conforme_objet(objet.nom, objet.sorte, contextes, sites, limite(objet.sorte))
+
+    def regle_conforme(regle: Regle) -> bool:
+        return est_conforme_regle(regle.nom, regle.action, contextes, sites, limite("regle"))
 
     def origines(objet: Objet) -> set[str]:
         return refs.get((objet.sorte, objet.nom), set())
@@ -90,7 +97,7 @@ def auditer(
             continue
         candidats.append(("objet", objet))
     for regle in inventaire.regles:
-        if not est_conforme_regle(regle.nom, regle.action, contextes, sites):
+        if not regle_conforme(regle):
             candidats.append(("regle", regle))
     candidats.sort(key=lambda item: (_sorte_item(item), _nom_item(item)))
 
@@ -105,16 +112,20 @@ def auditer(
                 base = proposer_service(item.empreinte)
             else:
                 site, zone = localisateur.objet(item)
-                base = proposer_objet(item.nom, PREFIXE[item.sorte], site, zone, contextes, sites)
+                base = proposer_objet(
+                    item.nom, PREFIXE[item.sorte], site, zone, contextes, sites, limite(item.sorte)
+                )
             references = tuple(sorted(origines(item)))
             sorte = item.sorte
         else:
             assert isinstance(item, Regle)
             site, zone_source, zone_destination = localisateur.regle(item)
-            base = proposer_regle(item.action, site, zone_source, zone_destination, item.services)
+            base = proposer_regle(
+                item.action, site, zone_source, zone_destination, item.services, limite("regle")
+            )
             references = ()
             sorte = "regle"
-        nouveau = rendre_unique(base, prises)
+        nouveau = rendre_unique(base, prises, limite(sorte))
         prises.add(nouveau)
         if nouveau == item.nom:
             continue
@@ -144,8 +155,8 @@ def auditer(
     )
     non_conformes = _non_conformes(
         inventaire,
-        contextes,
-        sites,
+        conforme,
+        regle_conforme,
         supprimes,
         orphelin_ids,
         {renommage.ancien: renommage for renommage in renommages},
@@ -162,15 +173,15 @@ def auditer(
 
 def _non_conformes(
     inventaire: Inventaire,
-    contextes: Sequence[str],
-    sites: Sequence[str],
+    conforme: Callable[[Objet], bool],
+    regle_conforme: Callable[[Regle], bool],
     supprimes: dict[tuple[str, str], Objet],
     orphelin_ids: set[tuple[str, str]],
     renommages: dict[str, Renommage],
 ) -> tuple[NonConforme, ...]:
     trouves: list[NonConforme] = []
     for objet in inventaire.objets:
-        if est_conforme_objet(objet.nom, objet.sorte, contextes, sites):
+        if conforme(objet):
             continue
         cle = (objet.sorte, objet.nom)
         renommage = renommages.get(objet.nom)
@@ -186,7 +197,7 @@ def _non_conformes(
             NonConforme(sorte=objet.sorte, nom=objet.nom, traitement=traitement, nom_propose=propose)
         )
     for regle in inventaire.regles:
-        if est_conforme_regle(regle.nom, regle.action, contextes, sites):
+        if regle_conforme(regle):
             continue
         renommage = renommages.get(regle.nom)
         if renommage is not None and renommage.sorte == "regle":

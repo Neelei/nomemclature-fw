@@ -84,7 +84,7 @@ def test_hors_referentiel_ctx_et_zone_par_le_nom(contextes, referentiel):
     loc, _ = _localisateur([], contextes, referentiel)
     assert loc.objet(_hote("srv_dmz_tiers", "192.0.2.50")) == Localisation("ctx", "dmz")
     assert loc.objet(_hote("EPFR_srv", "192.0.2.51")) == Localisation("ctx", "ctx")
-    assert loc.objet(_reseau("NET-EPFR-LAN-LARGE", "10.0.0.0", 8)) == Localisation("ctx", "lan")
+    assert loc.objet(_reseau("NET_EPFR_LAN_LARGE", "10.0.0.0", 8)) == Localisation("ctx", "lan")
 
 
 def test_plage_pool_vip_et_fqdn(contextes, referentiel):
@@ -92,13 +92,13 @@ def test_plage_pool_vip_et_fqdn(contextes, referentiel):
     a_cheval = Objet(sorte="plage", nom="q_lan", empreinte=("v4", "10.0.0.250", "10.1.1.5"), detail="")
     pool_a_cheval = Objet(sorte="pool", nom="q", empreinte=("10.0.0.250", "10.1.1.5"), detail="")
     pool = Objet(sorte="pool", nom="nat", empreinte=("203.0.113.20", "203.0.113.30"), detail="")
-    web = _hote("HST-EPFR-DMZ-WEB-01", "10.1.1.10")
+    web = _hote("HST_EPFR_DMZ_WEB-01", "10.1.1.10")
     vip = Objet(
         sorte="vip",
         nom="vip_web",
-        empreinte=("vip", "203.0.113.10", "HST-EPFR-DMZ-WEB-01", "", "", ""),
+        empreinte=("vip", "203.0.113.10", "HST_EPFR_DMZ_WEB-01", "", "", ""),
         detail="",
-        mentions_adresses=("HST-EPFR-DMZ-WEB-01",),
+        mentions_adresses=("HST_EPFR_DMZ_WEB-01",),
     )
     vip_interne = Objet(
         sorte="vip", nom="vip_lan", empreinte=("vip", "198.51.100.1", "10.1.2.5", "", "", ""), detail=""
@@ -146,8 +146,8 @@ def test_regle_site_depuis_les_sources_et_zones(contextes, referentiel):
         _reseau("Vlan210", "10.210.0.0", 24),
     ]
     regles = [
-        Regle("r1", "allow", True, ("zabbix",), ("web",), ("SVC-TCP-443",), ("port1",), ("port2",)),
-        Regle("r2", "allow", True, ("zabbix", "Vlan210"), ("web",), ("SVC-TCP-443",), ("lan",), ("dmz",)),
+        Regle("r1", "allow", True, ("zabbix",), ("web",), ("SVC_TCP_443",), ("port1",), ("port2",)),
+        Regle("r2", "allow", True, ("zabbix", "Vlan210"), ("web",), ("SVC_TCP_443",), ("lan",), ("dmz",)),
         Regle("r3", "deny", True, ("all",), ("web",), ("ALL",), ("wan",), ("dmz",)),
         Regle("r4", "allow", True, ("all",), ("all",), ("ALL",), ("port9",), ("port8",)),
     ]
@@ -164,7 +164,7 @@ config firewall address
     edit "zabbix_srv"
         set subnet 10.1.2.10 255.255.255.255
     next
-    edit "HST-EPFR-DMZ-WEB-01"
+    edit "HST_EPFR_DMZ_WEB-01"
         set subnet 10.1.1.10 255.255.255.255
     next
     edit "partenaire"
@@ -177,17 +177,17 @@ config firewall policy
         set srcintf "port1"
         set dstintf "dmz"
         set srcaddr "zabbix_srv"
-        set dstaddr "HST-EPFR-DMZ-WEB-01" "partenaire"
+        set dstaddr "HST_EPFR_DMZ_WEB-01" "partenaire"
         set action accept
-        set service "SVC-TCP-10050"
+        set service "SVC_TCP_10050"
     next
 end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes, referentiel)
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("partenaire", "HST-CTX-CTX-PARTENAIRE"),
-        ("zabbix_srv", "HST-EPFR-LAN-ZABBIX-SRV"),
-        ("supervision", "ALLOW-EPFR-LAN-DMZ-TCP-10050"),
+        ("partenaire", "HST_CTX_CTX_PARTENAIRE"),
+        ("zabbix_srv", "HST_EPFR_LAN_ZABBIX-SRV"),
+        ("supervision", "ALLOW_EPFR_LAN_DMZ_TCP-10050"),
     ]
     assert "sites : EPFR, GRAS" in resultat.referentiel
 
@@ -195,18 +195,18 @@ end
 def test_audit_sans_referentiel(contextes):
     texte = """
 config firewall address
-    edit "HST-EPFR-DMZ-WEB-01"
+    edit "HST_EPFR_DMZ_WEB-01"
         set subnet 10.1.1.10 255.255.255.255
     next
 end
 config firewall addrgrp
     edit "grp"
-        set member "HST-EPFR-DMZ-WEB-01"
+        set member "HST_EPFR_DMZ_WEB-01"
     next
 end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes)
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("HST-EPFR-DMZ-WEB-01", "HST-CTX-DMZ-WEB-01"),
+        ("HST_EPFR_DMZ_WEB-01", "HST_CTX_DMZ_WEB-01"),
     ]
     assert resultat.referentiel == "aucun (sites en CTX)"

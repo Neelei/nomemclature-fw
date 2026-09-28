@@ -43,7 +43,7 @@ Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` 
 
 ## Sites et zones
 
-Les noms prennent la forme `HST-EPFR-LAN-ZABBIXSRV` (objets) et `ALLOW-EPFR-LAN-DMZ-HTTPS` (règles). Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
+Les noms prennent la forme `HST_EPFR_LAN_ZABBIXSRV` (objets) et `ALLOW_EPFR_LAN_DMZ_HTTPS` (règles). Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
 
 ```text
 reseau;site;zone
@@ -75,7 +75,7 @@ uv run fwclean audit examples/fortigate/nomenclature.conf --reseaux reseaux.exem
 uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie out/stormshield
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST-EPFR-LAN-LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET-GRAS-LAN-VLAN210` par son réseau, et le groupe `Clients web`, qui mélange EPFR et GRAS, devient `GRP-MULTI-LAN-CLIENTS-WEB`.
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_EPFR_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange EPFR et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`.
 
 ## Tests
 
@@ -85,4 +85,4 @@ uv run pytest
 
 ## Premier passage sur un export réel
 
-Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms en `CTX` restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST-EPFR-DMZ-WEB-01`). Ce passage ne sert pas à réécrire les règles.
+Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms en `CTX` restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_EPFR_DMZ_WEB-01`). Ce passage ne sert pas à réécrire les règles.

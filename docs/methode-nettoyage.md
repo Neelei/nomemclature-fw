@@ -16,7 +16,7 @@ Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de 
 
 L'outil ne renomme pas un objet qui part en fusion, ni un orphelin : le retrait ou la fusion suffit. Le rapport Markdown les montre quand même dans les noms non conformes, avec le traitement prévu.
 
-Si le nom proposé est déjà pris par un objet qui existe encore au moment du renommage, un suffixe `-01`, `-02`, … est ajouté.
+Si le nom proposé est déjà pris par un objet qui existe encore au moment du renommage, un suffixe `-01`, `-02`, … est ajouté au dernier segment. Le nom reste dans la limite du constructeur (35 caractères pour une règle FortiGate, 31 pour un calendrier, 79 sinon) : c'est le détail qui est raccourci.
 
 ## Doublon strict
 
@@ -121,11 +121,11 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Exporter deux CSV, et �
 | `router` | ignoré |
 
 ```text
-host,HST-EPFR-DMZ-WEB-01,10.1.1.10,,,,"Serveur web"
-network,NET-EPFR-LAN-UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
-service,SVC-TCP-443,tcp,443,,,"HTTPS"
-group,GRP-EPFR-DMZ-WEB,"HST-EPFR-DMZ-WEB-01",""
-time,SCH-CTX-LAN-BUREAU,08:00-18:00,monday-friday,,""
+host,HST_EPFR_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
+network,NET_EPFR_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
+service,SVC_TCP_443,tcp,443,,,"HTTPS"
+group,GRP_EPFR_DMZ_WEB,"HST_EPFR_DMZ_WEB-01",""
+time,SCH_CTX_LAN_BUREAU,08:00-18:00,monday-friday,,""
 ```
 
 **Règles de filtrage** — CSV avec en-tête, virgule ou point-virgule. Une ligne `nat` (colonne `type` ou action `nat`) n'est pas auditée comme une règle : elle sert uniquement à connaître les objets qu'elle cite.

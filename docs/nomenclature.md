@@ -4,34 +4,44 @@ Convention commune pour les objets et le nom des règles FortiGate et Stormshiel
 
 ## Forme
 
-Objets : `{PREFIXE}-{SITE}-{ZONE}-{DETAIL}` — `HST-EPFR-LAN-ZABBIXSRV`, `NET-GRAS-LAN-VLAN210`.
+Objets : `{PREFIXE}_{SITE}_{ZONE}_{DETAIL}` — `HST_EPFR_LAN_ZABBIXSRV`, `NET_GRAS_LAN_VLAN210`.
 
-Règles : `{ALLOW|DENY}-{SITE}-{ZONE_SRC}-{ZONE_DST}-{SERVICE}` — `ALLOW-EPFR-LAN-DMZ-HTTPS`.
+Règles : `{ALLOW|DENY}_{SITE}_{ZONE_SRC}_{ZONE_DST}_{SERVICE}` — `ALLOW_EPFR_LAN_DMZ_HTTPS`.
 
-Services : `SVC-{PROTOCOLE}-{DETAIL}`, sans site ni zone — `SVC-TCP-443`.
+Services : `SVC_{PROTOCOLE}_{DETAIL}`, sans site ni zone — `SVC_TCP_443`.
 
 - majuscules uniquement (`A-Z`, `0-9`) ;
-- segments séparés par un tiret simple, sans tiret en début, en fin, ni doublé ;
-- pas d'espace, d'underscore, de point, ni d'accent ;
-- au moins quatre segments pour un objet (préfixe, site, zone, détail), cinq pour une règle ;
-- 79 caractères au plus (limite FortiGate sur le nom d'une adresse). La même limite est appliquée aux autres noms pour que la convention tienne sur les deux constructeurs.
+- les segments (type, site, zone, détail) sont séparés par un underscore `_` ;
+- le tiret `-` est réservé à l'intérieur du dernier segment : `HST_EPFR_LAN_ZABBIX-SRV`, `SVC_TCP_2000-2032`, `ALLOW_EPFR_LAN_DMZ_TCP-443`. Type, site et zone n'en contiennent jamais ;
+- ni `_` ni `-` en début, en fin, ou doublé ; pas d'espace, de point, ni d'accent ;
+- exactement quatre segments pour un objet (préfixe, site, zone, détail), cinq pour une règle, trois pour un service.
+
+Longueur maximale, reprise des limites FortiOS :
+
+| Nom | FortiGate | Stormshield |
+| --- | ---: | ---: |
+| règle (`firewall policy`) | 35 | 79 |
+| calendrier (`firewall schedule`) | 31 | 79 |
+| autres objets (adresses, groupes, services, VIP, pools) | 79 | 79 |
+
+Un nom proposé trop long est raccourci **dans son dernier segment seulement**, à une frontière de tiret quand c'est possible : type, site et zones restent entiers. `ALLOW_EPFR_PREPRODFR_PREPRODTH_PCSOFT-HFSQL` (43 caractères) devient `ALLOW_EPFR_PREPRODFR_PREPRODTH_PCSO` sur FortiGate. Un nom de règle déjà en place qui dépasse 35 caractères est signalé non conforme.
 
 ## Préfixes
 
 | Préfixe | Objet | Exemple |
 | --- | --- | --- |
-| `HST` | hôte | `HST-EPFR-DMZ-WEB-01` |
-| `NET` | réseau | `NET-EPFR-LAN-UTILISATEURS` |
-| `RNG` | plage d'adresses | `RNG-EPFR-VPN-CLIENTS` |
-| `FQDN` | nom DNS | `FQDN-CTX-WAN-UPDATES` |
-| `GRP` | groupe d'adresses | `GRP-EPFR-DMZ-WEB` |
-| `SVC` | service | `SVC-TCP-443` |
-| `SGRP` | groupe de services | `SGRP-CTX-DMZ-WEB` |
-| `VIP` | VIP | `VIP-EPFR-MULTI-WEB` |
-| `POOL` | pool d'adresses (FortiGate) | `POOL-EPFR-WAN-SORTANT` |
-| `SCH` | calendrier | `SCH-CTX-LAN-BUREAU` |
+| `HST` | hôte | `HST_EPFR_DMZ_WEB-01` |
+| `NET` | réseau | `NET_EPFR_LAN_UTILISATEURS` |
+| `RNG` | plage d'adresses | `RNG_EPFR_VPN_CLIENTS` |
+| `FQDN` | nom DNS | `FQDN_CTX_WAN_UPDATES` |
+| `GRP` | groupe d'adresses | `GRP_EPFR_DMZ_WEB` |
+| `SVC` | service | `SVC_TCP_443` |
+| `SGRP` | groupe de services | `SGRP_CTX_DMZ_WEB` |
+| `VIP` | VIP | `VIP_EPFR_MULTI_WEB` |
+| `POOL` | pool d'adresses (FortiGate) | `POOL_EPFR_WAN_SORTANT` |
+| `SCH` | calendrier | `SCH_CTX_LAN_BUREAU` |
 
-Le préfixe doit correspondre au type réel de l'objet. `NET-EPFR-DMZ-WEB` n'est pas un nom conforme pour un hôte.
+Le préfixe doit correspondre au type réel de l'objet. `NET_EPFR_DMZ_WEB` n'est pas un nom conforme pour un hôte.
 
 ## Site et zone
 
@@ -66,7 +76,7 @@ Valeurs réservées, toujours acceptées comme site et comme zone, à ne pas met
 | `CTX` | rien trouvé : l'objet n'est dans aucun réseau du référentiel, ou son nom ne contient aucune zone connue |
 | `MULTI` | les membres (groupe, VIP, pool, sources d'une règle) appartiennent à plusieurs sites ou plusieurs zones |
 
-Un nom est jugé sur sa forme : `HST-EPFR-LAN-X` est conforme dès que `EPFR` est un site connu et `LAN` une zone connue, même si l'adresse est en fait en DMZ. La déduction ci-dessous sert à **proposer** un nom pour ce qui ne l'est pas.
+Un nom est jugé sur sa forme : `HST_EPFR_LAN_X` est conforme dès que `EPFR` est un site connu et `LAN` une zone connue, même si l'adresse est en fait en DMZ. La déduction ci-dessous sert à **proposer** un nom pour ce qui ne l'est pas.
 
 ### Référentiel `reseaux.csv`
 
@@ -100,32 +110,32 @@ Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le d
 
 « Commun » : si tous les membres connus ont la même valeur, c'est elle ; s'ils en ont plusieurs, `MULTI` ; si aucun n'est connu, `CTX`. Un membre en `CTX` ne compte pas : un groupe d'un hôte `EPFR` et d'une adresse partenaire hors référentiel reste `EPFR`.
 
-Avec le référentiel d'exemple, `10.1.1.10` est dans `10.1.0.0/16` (LAN) et dans `10.1.1.0/24` (DMZ) : le `/24` est plus précis, l'hôte devient `HST-EPFR-DMZ-…`.
+Avec le référentiel d'exemple, `10.1.1.10` est dans `10.1.0.0/16` (LAN) et dans `10.1.1.0/24` (DMZ) : le `/24` est plus précis, l'hôte devient `HST_EPFR_DMZ_…`.
 
-Le détail reprend l'ancien nom sans préfixe, sans le premier jeton de site et sans le premier jeton de zone : `EPFR_zabbix` → `HST-EPFR-LAN-ZABBIX`. Un ancien nom déjà découpé en `{PREFIXE}-{SITE}-{ZONE}-…` garde seulement son détail, même si son site n'est pas connu.
+Le détail reprend l'ancien nom sans préfixe, sans le premier jeton de site et sans le premier jeton de zone : `EPFR_zabbix` → `HST_EPFR_LAN_ZABBIX`. Un ancien nom déjà découpé en préfixe, site, zone (`HST_EPFR_DMZ_WEB-01` ou `HST-EPFR-DMZ-WEB-01`) garde seulement son détail, même si son site n'est pas connu.
 
 ## Services
 
-Un service n'utilise ni site ni zone. Sa forme est `{SVC}-{PROTOCOLE}-{DETAIL}` :
+Un service n'utilise ni site ni zone. Sa forme est `SVC_{PROTOCOLE}_{DETAIL}` :
 
 - protocole : `TCP`, `UDP`, `ICMP`, `IP`, `SCTP` ou `ANY` ;
-- détail : le port (`SVC-TCP-443`, `SVC-UDP-53`), une plage (`SVC-TCP-2000-2032`), ou un nom court pour ICMP (`SVC-ICMP-ECHO`).
+- détail : le port (`SVC_TCP_443`, `SVC_UDP_53`), une plage (`SVC_TCP_2000-2032`), ou un nom court pour ICMP (`SVC_ICMP_ECHO`).
 
-Un groupe de services suit la forme des objets : `SGRP-CTX-DMZ-WEB`.
+Un groupe de services suit la forme des objets : `SGRP_CTX_DMZ_WEB`.
 
 ## Règles
 
-`{ALLOW|DENY}-{SITE}-{ZONE_SRC}-{ZONE_DST}-{SERVICE}`
+`{ALLOW|DENY}_{SITE}_{ZONE_SRC}_{ZONE_DST}_{SERVICE}`
 
 - `ALLOW` ou `DENY` reprend l'action déjà configurée (`accept` / `pass` → allow, `deny` / `block` → deny). On ne change pas l'action pour faire coller le nom ;
 - site : commun aux objets source (`MULTI` s'ils sont sur plusieurs sites). Si aucune source n'a de site connu (source `all`, `any`), le site commun des destinations est pris ; sinon `CTX` ;
 - zones : l'interface de la règle si elle porte un nom de zone de `contextes.txt` (`lan`, `dmz`) ; sinon (`port3`, plusieurs interfaces), la zone commune des objets source ou destination, déduite par le référentiel ;
 - le dernier segment décrit le service, en un ou plusieurs morceaux : `HTTPS`, `TCP-443` ;
-- un suffixe `-01` à `-99` lève un homonyme. Il n'est pas confondu avec un port : `ALLOW-EPFR-LAN-DMZ-TCP-80` garde `80` comme port, parce qu'il suit le protocole.
+- un suffixe `-01` à `-99` lève un homonyme. Il n'est pas confondu avec un port : `ALLOW_EPFR_LAN_DMZ_TCP-80` garde `80` comme port, parce qu'il suit le protocole.
 
-Exemples : `ALLOW-EPFR-LAN-DMZ-HTTPS`, `DENY-EPFR-WAN-LAN-ANY`, `ALLOW-MULTI-LAN-DMZ-TCP-443`, `ALLOW-EPFR-LAN-DMZ-HTTPS-01`.
+Exemples : `ALLOW_EPFR_LAN_DMZ_HTTPS`, `DENY_EPFR_WAN_LAN_ANY`, `ALLOW_MULTI_LAN_DMZ_TCP-443`, `ALLOW_EPFR_LAN_DMZ_HTTPS-01`.
 
-Un nom déjà conforme n'est pas réécrit, même si l'outil aurait choisi un autre libellé de service. `ALLOW-EPFR-LAN-DMZ-HTTPS` reste, y compris si l'objet service s'appelle `SVC-TCP-443`.
+Un nom déjà conforme n'est pas réécrit, même si l'outil aurait choisi un autre libellé de service. `ALLOW_EPFR_LAN_DMZ_HTTPS` reste, y compris si l'objet service s'appelle `SVC_TCP_443`.
 
 ## Exemples non conformes
 
@@ -133,15 +143,16 @@ Avec `reseaux.exemple.csv` :
 
 | Nom actuel | Contenu | Pourquoi | Nom proposé (si l'objet est conservé) |
 | --- | --- | --- | --- |
-| `web_dmz_backup` | `10.1.1.20/32` | pas de préfixe ni de site | `HST-EPFR-DMZ-WEB-BACKUP` |
-| `Vlan210` | `10.210.0.0/24` | pas de préfixe ni de site | `NET-GRAS-LAN-VLAN210` |
-| `partenaire` | `192.0.2.10/32` | hors référentiel | `HST-CTX-CTX-PARTENAIRE` |
-| `Clients web` | membres `EPFR` et `GRAS` en LAN | espace, deux sites | `GRP-MULTI-LAN-CLIENTS-WEB` |
-| `HST-DMZ-WEB-01` | `10.1.1.10/32` | ancienne forme, sans site | `HST-EPFR-DMZ-WEB-01` |
-| `HTTPS custom` | `tcp/443` | espace, pas de préfixe | `SVC-TCP-443` |
-| `Acces web` | `lan` → `dmz`, `SVC-TCP-443`, source `EPFR` | ne suit pas action, site et zones | `ALLOW-EPFR-LAN-DMZ-TCP-443` |
-| `ALLOW-LAN-DMZ-HTTPS` | règle | ancienne forme, sans site | `ALLOW-EPFR-LAN-DMZ-…` |
-| `hst-epfr-dmz-web-01` | hôte | minuscules : la forme exige des majuscules | `HST-EPFR-DMZ-WEB-01` |
+| `web_dmz_backup` | `10.1.1.20/32` | pas de préfixe ni de site | `HST_EPFR_DMZ_WEB-BACKUP` |
+| `Vlan210` | `10.210.0.0/24` | pas de préfixe ni de site | `NET_GRAS_LAN_VLAN210` |
+| `partenaire` | `192.0.2.10/32` | hors référentiel | `HST_CTX_CTX_PARTENAIRE` |
+| `Clients web` | membres `EPFR` et `GRAS` en LAN | espace, deux sites | `GRP_MULTI_LAN_CLIENTS-WEB` |
+| `HST-DMZ-WEB-01` | `10.1.1.10/32` | ancienne forme, sans site | `HST_EPFR_DMZ_WEB-01` |
+| `HTTPS custom` | `tcp/443` | espace, pas de préfixe | `SVC_TCP_443` |
+| `Acces web` | `lan` → `dmz`, `SVC_TCP_443`, source `EPFR` | ne suit pas action, site et zones | `ALLOW_EPFR_LAN_DMZ_TCP-443` |
+| `ALLOW-LAN-DMZ-HTTPS` | règle | ancienne forme, sans site | `ALLOW_EPFR_LAN_DMZ_…` |
+| `HST-EPFR-DMZ-WEB-01` | hôte | segments séparés par des tirets au lieu de `_` | `HST_EPFR_DMZ_WEB-01` |
+| `hst_epfr_dmz_web-01` | hôte | minuscules : la forme exige des majuscules | `HST_EPFR_DMZ_WEB-01` |
 
 Si ce nom désigne un doublon strict, le plan ne le renomme pas : il le fusionne vers l'objet conservé. S'il ne sert nulle part, le plan propose son retrait, pas un renommage.
 

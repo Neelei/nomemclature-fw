@@ -54,7 +54,7 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
     assert any(item["ancien"] == "web_dmz_backup" for item in plan["renommages"])
     assert any(item["nom"] == "srv-oublie" for item in plan["retraits"])
     assert "Référentiel réseaux :" in rapport and "sites : EPFR, GRAS" in rapport
-    assert any(item["nouveau"] == "NET-GRAS-LAN-VLAN210" for item in plan["renommages"])
+    assert any(item["nouveau"] == "NET_GRAS_LAN_VLAN210" for item in plan["renommages"])
     assert "Aucune modification appliquée." in capsys.readouterr().out
 
 
@@ -66,7 +66,7 @@ def test_audit_sans_reseaux_csv(racine, tmp_path, capsys, monkeypatch):
     sortie = capsys.readouterr().out
     assert "Référentiel réseaux : aucun (sites en CTX)" in sortie
     plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
-    assert any(item["nouveau"] == "NET-CTX-CTX-VLAN210" for item in plan["renommages"])
+    assert any(item["nouveau"] == "NET_CTX_CTX_VLAN210" for item in plan["renommages"])
 
 
 def test_reseaux_csv_local_par_defaut(racine, tmp_path, capsys, monkeypatch):
@@ -78,7 +78,7 @@ def test_reseaux_csv_local_par_defaut(racine, tmp_path, capsys, monkeypatch):
     assert executer(["audit", str(source), "--sortie", str(tmp_path / "out")]) == 0
     assert "sites : LYON" in capsys.readouterr().out
     plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
-    assert any(item["nouveau"] == "NET-LYON-LAN-VLAN210" for item in plan["renommages"])
+    assert any(item["nouveau"] == "NET_LYON_LAN_VLAN210" for item in plan["renommages"])
 
 
 def test_reseaux_introuvable(racine, tmp_path, capsys):
