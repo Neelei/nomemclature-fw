@@ -81,7 +81,15 @@ reseau;site;zone
 10.210.0.0/24;gras;lan
 ```
 
-Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv). Un réseau invalide, une zone absente de `contextes.txt` ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et les objets d'adresse non conformes sont tous listés à revoir.
+Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv), ou le générer depuis une sauvegarde FortiGate :
+
+```bash
+fwclean reseaux inbox/pare-feu.conf --site siege
+```
+
+La commande lit `config system interface` (une ligne par interface qui porte une IP), `config system zone` et les zones SD-WAN (`config system sdwan` → `members`). La zone FortiGate de l'interface, ou le nom de l'interface si elle n'est dans aucune zone, est traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`, `oob = mgmt`) ; un nom qui est déjà une zone (`LAN` → `lan`) n'a pas besoin de correspondance. Une interface sans zone traduite est écrite en commentaire, à compléter. Le fichier existant n'est remplacé qu'avec `--ecraser`. Les réseaux non connectés (sites distants, pools VPN, IP publiques) sont à ajouter à la main.
+
+Un réseau invalide, une zone absente de `contextes.txt` ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et les objets d'adresse non conformes sont tous listés à revoir.
 
 ### FortiGate
 
@@ -154,6 +162,31 @@ fwclean audit inbox/objets.csv inbox/regles.csv inbox/routes.csv --sortie out
 ```
 
 Un dossier qui contient ces CSV marche aussi : `fwclean audit inbox/ --sortie out`.
+
+## Appliquer le plan sur FortiGate
+
+`fwclean` ne se connecte pas au firewall. Il écrit le script CLI qui applique le plan relu :
+
+```bash
+fwclean script inbox/pare-feu.conf --plan out/plan.json --sortie out/script
+```
+
+Le plan peut être modifié avant (retirer une ligne suffit à l'exclure). La commande relit la sauvegarde pour trouver les références, et écrit dans `out/script/` :
+
+| Fichier | Contenu |
+| --- | --- |
+| `01-renommages.txt` | `rename "ancien" to "nouveau"` ; FortiOS met à jour toutes les références |
+| `02-fusions.txt` | pour chaque doublon : `append` de l'objet conservé puis `unselect` du doublon dans chaque règle, groupe ou route qui le cite (`set` pour un champ à valeur unique : calendrier, route statique), puis `delete` du doublon |
+| `03-retraits.txt` | `delete` des objets sans référence |
+| `ignores.txt` | opérations du plan non reprises, avec la raison |
+
+Chaque fichier est découpé en lots (`--lot`, 20 objets par défaut). Les commandes tiennent compte des étapes précédentes : un groupe renommé est édité sous son nouveau nom lors des fusions.
+
+Ne sont pas repris : les objets par défaut de FortiOS (`all`, `ALL`, `HTTP`, `DNS`, `always`, `Web Access`, …, sauf `--inclure-defauts`), les objets absents de la sauvegarde, un renommage vers un nom déjà pris, et un retrait d'objet encore cité dans la sauvegarde.
+
+Les références lues sont celles des règles (`srcaddr`, `dstaddr`, `service`, `schedule`, `poolname`), des groupes d'adresses, de services et de calendriers, et des routes. Un objet cité ailleurs (VPN SSL, IPsec, local-in, proxy, SD-WAN) n'est pas réécrit : FortiGate refuse alors le `delete`, et l'objet reste. C'est le filet de sécurité voulu : ne pas forcer.
+
+Ordre : 01, puis 02, puis 03, un lot à la fois, avec sauvegarde avant et test des flux après. Ré-exporter la configuration et relancer l'audit entre deux passes. Si le firewall est piloté par FortiManager, appliquer dans FortiManager.
 
 ## Sorties
 

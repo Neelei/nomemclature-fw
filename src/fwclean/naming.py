@@ -85,18 +85,43 @@ def analyser_contextes(texte: str) -> tuple[str, ...]:
 
     CTX et MULTI sont toujours valables ; s'ils figurent dans le fichier, ils sont ignorés.
     """
+    zones, _correspondances = _analyser_contextes(texte)
+    return zones
+
+
+def lire_correspondances(chemin: Path) -> dict[str, str]:
+    """Noms FortiGate (zone ou interface) → zone courte, d'après les lignes « zone = nom, nom »."""
+    _zones, correspondances = _analyser_contextes(chemin.read_text(encoding="utf-8"))
+    return correspondances
+
+
+def cle_correspondance(nom: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", nom.lower())
+
+
+def _analyser_contextes(texte: str) -> tuple[tuple[str, ...], dict[str, str]]:
     vus: list[str] = []
+    correspondances: dict[str, str] = {}
     for brut in texte.splitlines():
-        ligne = brut.split("#", 1)[0].strip().lower()
+        ligne = brut.split("#", 1)[0].strip()
         if not ligne:
             continue
-        if not re.fullmatch(r"[a-z0-9]+", ligne):
-            raise ErreurLecture(f"Contexte invalide : {ligne}")
-        if ligne not in vus and ligne not in RESERVES:
-            vus.append(ligne)
+        zone, _egal, noms = ligne.partition("=")
+        zone = zone.strip().lower()
+        if not re.fullmatch(r"[a-z0-9]+", zone):
+            raise ErreurLecture(f"Contexte invalide : {zone}")
+        if zone not in vus and zone not in RESERVES:
+            vus.append(zone)
+        for nom in noms.split(","):
+            cle = cle_correspondance(nom)
+            if not cle:
+                continue
+            if correspondances.get(cle, zone) != zone:
+                raise ErreurLecture(f"contextes.txt : « {nom.strip()} » associé à deux zones.")
+            correspondances[cle] = zone
     if not vus:
         raise ErreurLecture("La liste de contextes est vide.")
-    return tuple(vus)
+    return tuple(vus), correspondances
 
 
 def zone_connue(jeton: str, contextes: Sequence[str]) -> bool:

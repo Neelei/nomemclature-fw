@@ -36,48 +36,48 @@ SECTIONS = {
 
 
 def lire_fortigate(texte: str, source: str) -> Inventaire:
-    blocs = _blocs(texte)
+    decoupe = blocs(texte)
     objets: list[Objet] = []
     regles: list[Regle] = []
     liens: list[Lien] = []
     ignores: list[str] = []
-    vlans = _vlans(blocs.get("system interface", []))
+    vlans = _vlans(decoupe.get("system interface", []))
 
-    for nom, data in blocs.get("firewall address", []):
+    for nom, data in decoupe.get("firewall address", []):
         objet, ignore = _adresse(nom, data, vlans)
         if objet:
             objets.append(objet)
         elif ignore:
             ignores.append(ignore)
 
-    for nom, data in blocs.get("firewall addrgrp", []):
+    for nom, data in decoupe.get("firewall addrgrp", []):
         objets.append(_groupe(nom, data))
 
-    for nom, data in blocs.get("firewall service custom", []):
+    for nom, data in decoupe.get("firewall service custom", []):
         objets.append(_service(nom, data))
 
-    for nom, data in blocs.get("firewall service group", []):
+    for nom, data in decoupe.get("firewall service group", []):
         objets.append(_groupe_services(nom, data))
 
-    for nom, data in blocs.get("firewall vip", []):
+    for nom, data in decoupe.get("firewall vip", []):
         objets.append(_vip(nom, data))
 
-    for nom, data in blocs.get("firewall ippool", []):
+    for nom, data in decoupe.get("firewall ippool", []):
         objets.append(_pool(nom, data))
 
-    for nom, data in blocs.get("firewall schedule recurring", []):
+    for nom, data in decoupe.get("firewall schedule recurring", []):
         objets.append(_calendrier_recurrent(nom, data))
 
-    for nom, data in blocs.get("firewall schedule onetime", []):
+    for nom, data in decoupe.get("firewall schedule onetime", []):
         objets.append(_calendrier_unique(nom, data))
 
-    for nom, data in blocs.get("firewall policy", []):
+    for nom, data in decoupe.get("firewall policy", []):
         regles.append(_regle(nom, data))
 
-    for nom, data in blocs.get("router static", []):
+    for nom, data in decoupe.get("router static", []):
         liens.append(_route(nom, data))
 
-    for nom, data in blocs.get("router policy", []):
+    for nom, data in decoupe.get("router policy", []):
         liens.append(_route(nom, data))
 
     return Inventaire(
@@ -345,11 +345,18 @@ def _semble_ip(valeur: str) -> bool:
     return True
 
 
-def _blocs(texte: str) -> dict[str, list[tuple[str, dict[str, list[str]]]]]:
-    """Découpe les sections connues. Une section inconnue est ignorée, y compris son imbrication."""
+def blocs(
+    texte: str, sections: frozenset[str] | set[str] | None = None
+) -> dict[str, list[tuple[str, dict[str, list[str]]]]]:
+    """Découpe les sections demandées (chemin complet : « system sdwan members »).
+
+    Une section inconnue est ignorée, y compris son imbrication.
+    """
+    sections = SECTIONS if sections is None else sections
     resultat: dict[str, list[tuple[str, dict[str, list[str]]]]] = {}
     profondeur = 0
     section_par_niveau: dict[int, str | None] = {}
+    chemin_par_niveau: dict[int, str | None] = {}
     edit_nom: str | None = None
     edit_data: dict[str, list[str]] = {}
 
@@ -369,15 +376,20 @@ def _blocs(texte: str) -> dict[str, list[tuple[str, dict[str, list[str]]]]]:
             if edit_nom is not None:
                 profondeur += 1
                 section_par_niveau[profondeur] = None
+                chemin_par_niveau[profondeur] = None
                 continue
-            profondeur += 1
             nom = ligne[len("config ") :].strip()
-            section_par_niveau[profondeur] = nom if nom in SECTIONS else None
+            parent = chemin_par_niveau.get(profondeur) if profondeur else ""
+            profondeur += 1
+            chemin = None if parent is None else f"{parent} {nom}".strip()
+            chemin_par_niveau[profondeur] = chemin
+            section_par_niveau[profondeur] = chemin if chemin in sections else None
             continue
         if ligne == "end":
             if section_par_niveau.get(profondeur):
                 verser()
             section_par_niveau.pop(profondeur, None)
+            chemin_par_niveau.pop(profondeur, None)
             profondeur = max(0, profondeur - 1)
             continue
         section = section_par_niveau.get(profondeur)

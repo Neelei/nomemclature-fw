@@ -52,7 +52,7 @@ La **zone** est le troisième segment. Elle est valide si elle figure dans [`con
 
 La comparaison est **case-insensitive** : les fichiers gardent leurs clés en minuscules (`siege`, `lan`), les noms les écrivent en majuscules (`SIEGE`, `LAN`). Ajouter un site ou une zone ne demande pas de modifier le programme.
 
-Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01. Une zone tient en un seul segment : les noms FortiGate longs ou avec espaces sont raccourcis.
+Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01. Une zone tient en un seul segment : les noms FortiGate longs ou avec espaces sont raccourcis. La correspondance s'écrit dans le fichier, `zone = nom FortiGate` (`mgmt = MGMT NETWORKS`), et sert à `fwclean reseaux`.
 
 | Zone (fichier) | Dans un nom | Zone ou interface FortiGate |
 | --- | --- | --- |

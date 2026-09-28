@@ -83,6 +83,22 @@ Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un obj
 uv run pytest
 ```
 
+## Générer reseaux.csv
+
+```bash
+uv run fwclean reseaux inbox/pare-feu.conf --site siege
+```
+
+Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate, la zone venant de la zone FortiGate de chaque interface, traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`). Ajouter ensuite à la main les réseaux non connectés. `--ecraser` remplace un fichier existant.
+
+## Produire le script d'application
+
+```bash
+uv run fwclean script inbox/pare-feu.conf --plan out/plan.json
+```
+
+Écrit dans `out/script/` trois fichiers de commandes CLI FortiGate à relire puis à coller lot par lot : `01-renommages.txt`, `02-fusions.txt`, `03-retraits.txt`, et `ignores.txt` pour ce qui n'est pas repris (objets par défaut de FortiOS, objets encore cités). Rien n'est envoyé au firewall. Détail dans [la méthode](docs/methode-nettoyage.md#appliquer-le-plan-sur-fortigate).
+
 ## Premier passage sur un export réel
 
-Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_SIEGE_DMZ_WEB-01`). Ce passage ne sert pas à réécrire les règles.
+Générer ou remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_SIEGE_DMZ_WEB-01`). Une fois le plan relu, produire le script, l'appliquer lot par lot, puis ré-exporter et relancer l'audit. Ce passage ne sert pas à réécrire les règles.

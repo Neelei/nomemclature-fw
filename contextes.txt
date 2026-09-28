@@ -1,21 +1,24 @@
 # Zones autorisées, une par ligne : 3e segment des objets (HST_SIEGE_LAN_…).
-# Clés en minuscules dans ce fichier ; matching case-insensitive.
-# Les noms produits sont en MAJUSCULES (DMZ, LAN, …).
-# Les sites ne vont pas ici : ils viennent de reseaux.csv.
+# Clés en minuscules ; matching case-insensitive. Les noms produits sont en
+# MAJUSCULES (DMZ, LAN, …). Les sites ne vont pas ici : ils viennent de reseaux.csv.
 # MULTI (membres de plusieurs zones) est réservé et toujours accepté ;
 # inutile de l'ajouter. Un objet sans zone trouvée est signalé, pas renommé.
-# En commentaire : zone ou interface FortiGate d'origine (EPFRFORTI01).
+#
+# Après « = » : noms FortiGate (zone, zone SD-WAN ou interface hors zone) qui
+# correspondent à cette zone, séparés par des virgules. `fwclean reseaux` s'en sert
+# pour écrire reseaux.csv. Un nom qui est déjà la zone (LAN → lan) n'a pas besoin
+# d'y figurer. Correspondances reprises d'EPFRFORTI01.
 
-lan        # LAN
-dmz        # DMZ
-wan        # WAN (zone SD-WAN, VLAN-777)
-vpn        # ssl.root, VPN SSL
-mgmt       # MGMT NETWORKS : iDRAC, Datacore, SAN
-bastion    # Bastion ADMIN_MGMT
-users      # Users LAN : Wi-Fi corporate (VLAN-40)
-preprodfr  # PreProd FRANCE
-preprodth  # PreProd THAILANDE
-invite     # WIFI INVITE VLAN-42
-mobile     # WIFI MOBILE VLAN-41
-oob        # port mgmt dédié, hors zone
-loop       # LOOPMGMT, loopback d'administration, hors zone
+lan
+dmz
+wan                 # zone SD-WAN WAN (VLAN-777)
+vpn = ssl.root      # VPN SSL
+mgmt = MGMT NETWORKS         # iDRAC, Datacore, SAN
+bastion = Bastion ADMIN_MGMT
+users = Users LAN            # Wi-Fi corporate (VLAN-40)
+preprodfr = PreProd FRANCE
+preprodth = PreProd THAILANDE
+invite = WIFI INVITE VLAN-42
+mobile = WIFI MOBILE VLAN-41
+oob = mgmt                   # port mgmt dédié, hors zone
+loop = LOOPMGMT              # loopback d'administration, hors zone
