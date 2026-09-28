@@ -12,7 +12,7 @@ Un objet utilisé seulement par une règle désactivée n'est pas orphelin.
 
 Le contenu (adresse, membres, ports, action, source, destination, service) reste celui de l'export. Le nom proposé suit [la nomenclature](nomenclature.md).
 
-Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Un réseau dont le VLAN est connu (FortiGate) porte `VLAN{ID}` dans son détail. Services, groupes de services et calendriers n'ont ni site ni zone et gardent le libellé de leur ancien nom (`SVC_HTTP-8080`). Le détail est dans [la nomenclature](nomenclature.md#déduction).
+Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Un réseau dont le VLAN est connu (FortiGate) porte `VLAN{ID}` dans son détail. Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte son protocole et ses ports, calculés sur son contenu, puis le libellé de son ancien nom (`HTTP-8080` → `SVC_TCP_8080_HTTP`). Le détail est dans [la nomenclature](nomenclature.md#déduction).
 
 Un objet d'adresse sans correspondance de site ou de zone n'est **pas renommé** : il est listé à revoir, avec un commentaire qui dit ce qui manque. Compléter `reseaux.csv` puis relancer l'audit.
 
@@ -125,7 +125,7 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Exporter deux CSV, et �
 ```text
 host,HST_SIEGE_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
 network,NET_SIEGE_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
-service,SVC_HTTPS,tcp,443,,,"HTTPS"
+service,SVC_TCP_443_HTTPS,tcp,443,,,"HTTPS"
 group,GRP_SIEGE_DMZ_WEB,"HST_SIEGE_DMZ_WEB-01",""
 time,SCH_BUREAU,08:00-18:00,monday-friday,,""
 ```

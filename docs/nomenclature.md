@@ -6,13 +6,16 @@ Convention commune pour les objets FortiGate et Stormshield. Elle ne décrit pas
 
 Objets d'adresse (hôtes, réseaux, plages, FQDN, groupes, VIP, pools) : `{PREFIXE}_{SITE}_{ZONE}_{DETAIL}` — `HST_SIEGE_LAN_ZABBIXSRV`, `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`.
 
-Services, groupes de services et calendriers : `{PREFIXE}_{DETAIL}`, sans site ni zone — `SVC_HTTPS`, `SGRP_ACTIVE-DIRECTORY`, `SCH_BUREAU`.
+Services : `SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}`, sans site ni zone — `SVC_TCP_443_HTTPS`, `SVC_ANY_53_DNS`.
+
+Groupes de services et calendriers : `{PREFIXE}_{DETAIL}`, sans site ni zone — `SGRP_ACTIVE-DIRECTORY`, `SCH_BUREAU`.
 
 - majuscules uniquement (`A-Z`, `0-9`) ;
 - les segments (type, site, zone, détail) sont séparés par un underscore `_` ;
-- le tiret `-` est réservé à l'intérieur du dernier segment : `HST_SIEGE_LAN_ZABBIX-SRV`, `SVC_HTTP-8080`, `HST_SIEGE_DMZ_WEB-01`. Type, site et zone n'en contiennent jamais ;
-- ni `_` ni `-` en début, en fin, ou doublé ; pas d'espace, de point, ni d'accent ;
-- exactement quatre segments pour un objet d'adresse (préfixe, site, zone, détail), deux pour un service, un groupe de services ou un calendrier (préfixe, détail) ;
+- le tiret `-` est réservé à l'intérieur du dernier segment (`HST_SIEGE_LAN_ZABBIX-SRV`, `HST_SIEGE_DMZ_WEB-01`) et aux plages de ports d'un service (`SVC_UDP_67-68_DHCP`). Type, site et zone n'en contiennent jamais ;
+- le point `.` n'existe que dans le segment des ports d'un service, pour séparer plusieurs ports (`SVC_ANY_88.464_KERBEROS`) ;
+- ni `_`, `-` ou `.` en début, en fin, ou doublé ; pas d'espace ni d'accent ;
+- exactement quatre segments pour un objet d'adresse (préfixe, site, zone, détail), trois ou quatre pour un service (préfixe, protocole, ports, libellé facultatif), deux pour un groupe de services ou un calendrier (préfixe, détail) ;
 - un réseau dont le VLAN est connu dans la configuration porte `VLAN{ID}` dans son détail (voir [Réseaux et VLAN](#réseaux-et-vlan)).
 
 Longueur maximale, reprise des limites FortiOS :
@@ -33,7 +36,7 @@ Un nom proposé trop long est raccourci **dans son dernier segment seulement**, 
 | `RNG` | plage d'adresses | `RNG_SIEGE_VPN_CLIENTS` |
 | `FQDN` | nom DNS | `FQDN_SIEGE_WAN_UPDATES` |
 | `GRP` | groupe d'adresses | `GRP_SIEGE_DMZ_WEB` |
-| `SVC` | service | `SVC_HTTPS` |
+| `SVC` | service | `SVC_TCP_443_HTTPS` |
 | `SGRP` | groupe de services | `SGRP_WEB` |
 | `VIP` | VIP | `VIP_SIEGE_MULTI_WEB` |
 | `POOL` | pool d'adresses (FortiGate) | `POOL_SIEGE_WAN_SORTANT` |
@@ -118,11 +121,21 @@ Sur FortiGate, les interfaces VLAN de `config system interface` (`set vlanid`) d
 
 Le détail commence alors par `VLAN{ID}`, et les mentions de VLAN de l'ancien nom sont retirées : `SRV-ESX-MSA [vlan11]` → `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`, `MEETING [valn50]` → `NET_SIEGE_LAN_VLAN50-MEETING`. L'ID vient toujours de la configuration : `EDF [vlan20]`, sur une interface en VLAN 52, devient `NET_SIEGE_LAN_VLAN52-EDF`. Un réseau dont le VLAN est connu et dont le nom ne contient pas `VLAN{ID}` n'est pas conforme. Sans VLAN connu (réseau distant, export Stormshield), rien n'est ajouté.
 
-## Services, groupes de services, calendriers
+## Services
 
-Ils n'ont ni site ni zone. Leur forme est `{PREFIXE}_{DETAIL}`, et le détail **garde le libellé de l'ancien nom**, qui porte le sens : `HTTP-8080` → `SVC_HTTP-8080`, `MS Global Catalog` → `SVC_MS-GLOBAL-CATALOG`, `Active Directory` → `SGRP_ACTIVE-DIRECTORY`, `Bureau` → `SCH_BUREAU`. Le protocole et le port restent visibles dans le contenu, repris par le rapport.
+Un service n'a ni site ni zone. Sa forme est `SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}` :
 
-Seul un service sans libellé exploitable prend protocole et port comme détail : `SVC_TCP-443`, `SVC_UDP-67-68`.
+| Segment | Valeur | Exemples |
+| --- | --- | --- |
+| protocole | `TCP`, `UDP`, `ANY` quand TCP et UDP sont tous deux ouverts ; `ICMP`, `ICMP6`, `IP`, `SCTP` pour les autres | `SVC_TCP_443_HTTPS`, `SVC_UDP_389_LDAP`, `SVC_ANY_53_DNS` |
+| ports | port de destination ; plage en `-` ; plusieurs ports séparés par `.` ; type ICMP ou numéro de protocole IP ; `ANY` pour tout ICMP ou tout IP | `SVC_UDP_67-68_DHCP`, `SVC_ANY_88.464_KERBEROS`, `SVC_ICMP_8_PING`, `SVC_IP_47_GRE` |
+| libellé | l'ancien nom, sans les mots de protocole ni les numéros de port déjà présents ; facultatif | `HTTP-8080` → `SVC_TCP_8080_HTTP`, `MS Global Catalog` → `SVC_TCP_3268-3269_MS-GLOBAL-CATALOG`, `SVC_TCP_443` reste `SVC_TCP_443` |
+
+Protocole et ports sont calculés sur le **contenu** du service, pas sur son ancien nom : `SVC_UDP_443_HTTPS` pour un service TCP/443 n'est pas conforme. Quand TCP et UDP n'ouvrent pas les mêmes ports, `ANY` est suivi de tous les ports (`netbios` → `SVC_ANY_137.138.139_NETBIOS`) ; le détail par protocole reste dans le contenu, repris par le rapport. Les ports source ne figurent pas dans le nom.
+
+## Groupes de services, calendriers
+
+Ni site ni zone. Leur forme est `{PREFIXE}_{DETAIL}`, et le détail **garde le libellé de l'ancien nom** : `Active Directory` → `SGRP_ACTIVE-DIRECTORY`, `Bureau` → `SCH_BUREAU`.
 
 ## Règles
 
@@ -140,8 +153,9 @@ Avec `reseaux.exemple.csv` :
 | `Clients web` | membres `SIEGE` et `GRAS` en LAN | espace, deux sites | `GRP_MULTI_LAN_CLIENTS-WEB` |
 | `HST-DMZ-WEB-01` | `10.1.1.10/32` | ancienne forme, sans site | `HST_SIEGE_DMZ_WEB-01` |
 | `LAN Utilisateurs` | `10.0.0.0/24`, VLAN 10 | espace, pas de VLAN | `NET_SIEGE_LAN_VLAN10-UTILISATEURS` |
-| `Appli metier 8443` | `tcp/8443` | espaces, pas de préfixe | `SVC_APPLI-METIER-8443` |
-| `SVC_TCP_443` | `tcp/443` | trois segments, pas de libellé | `SVC_TCP-443` |
+| `Appli metier 8443` | `tcp/8443` | espaces, pas de préfixe | `SVC_TCP_8443_APPLI-METIER` |
+| `SVC_HTTPS` | `tcp/443` | ni protocole ni port | `SVC_TCP_443_HTTPS` |
+| `DNS` | `tcp/53, udp/53` | pas de préfixe | `SVC_ANY_53_DNS` |
 | `HST-SIEGE-DMZ-WEB-01` | hôte | segments séparés par des tirets au lieu de `_` | `HST_SIEGE_DMZ_WEB-01` |
 | `hst_siege_dmz_web-01` | hôte | minuscules : la forme exige des majuscules | `HST_SIEGE_DMZ_WEB-01` |
 

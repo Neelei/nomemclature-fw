@@ -30,7 +30,7 @@ def test_exemple_fortigate(racine, contextes, referentiel):
         ("groupe-adresses", "Clients web", "GRP_MULTI_LAN_CLIENTS-WEB"),
         ("hote", "web_dmz_backup", "HST_SIEGE_DMZ_WEB-BACKUP"),
         ("reseau", "Vlan210", "NET_GRAS_LAN_VLAN210"),
-        ("service", "Appli metier 8443", "SVC_APPLI-METIER-8443"),
+        ("service", "Appli metier 8443", "SVC_TCP_8443_APPLI-METIER"),
     ]
     assert resultat.renommages[1].references == ("Acces web",)
     assert [(item.sorte, item.conserve, item.supprimes, item.references_reecrites) for item in resultat.fusions] == [
@@ -40,7 +40,7 @@ def test_exemple_fortigate(racine, contextes, referentiel):
         ("hote", "HST_SIEGE_DMZ_WEB-01", ("Web_DMZ",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("pool", "POOL_SIEGE_WAN_SORTANT", ("SNAT_POOL",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("reseau", "NET_SIEGE_LAN_VLAN10-UTILISATEURS", ("LAN Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("service", "SVC_HTTPS", ("HTTPS custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("service", "SVC_TCP_443_HTTPS", ("HTTPS custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
     ]
     assert resultat.fusions[3].contenu == "10.1.1.10/32"
     assert resultat.fusions[5].contenu == "10.0.0.0/24"

@@ -1,8 +1,9 @@
 # Export synthétique d'objets Stormshield (CSV annexe SNS, module Objets).
 # Cas couverts : nom non conforme, doublon strict, orphelin.
 # Site déduit du réseau avec --reseaux reseaux.exemple.csv ; groupe sur deux sites.
-# Noms conformes en MAJUSCULES : {PREFIXE}_{SITE}_{ZONE}_{DETAIL} ; services,
-# groupes de services et calendriers sans site ni zone (SVC_HTTPS).
+# Noms conformes en MAJUSCULES : {PREFIXE}_{SITE}_{ZONE}_{DETAIL} ; services en
+# SVC_{PROTOCOLE}_{PORTS}_{LIBELLE} (SVC_TCP_443_HTTPS), groupes de services et
+# calendriers sans site ni zone (SGRP_WEB, SCH_BUREAU).
 host,HST_SIEGE_DMZ_WEB-01,10.1.1.10,,,,"Serveur web conforme"
 host,Web_DMZ,10.1.1.10,,,,"Doublon strict"
 host,web_dmz_backup,10.1.1.20,,,,"A renommer"
@@ -19,9 +20,9 @@ group,GRP_SIEGE_DMZ_WEB,"HST_SIEGE_DMZ_WEB-01",""
 group,Groupe_Web,"HST_SIEGE_DMZ_WEB-01","Doublon de groupe"
 group,Clients_web,"NET_SIEGE_LAN_UTILISATEURS,Vlan210","Deux sites"
 group,groupe-oublie,"HST_SIEGE_LAN_LEGACY","Groupe sans reference"
-service,SVC_HTTPS,tcp,443,,,"HTTPS"
+service,SVC_TCP_443_HTTPS,tcp,443,,,"HTTPS"
 service,HTTPS_custom,tcp,443,,,"Doublon de service"
-servicegroup,SGRP_WEB,"SVC_HTTPS","Services web"
+servicegroup,SGRP_WEB,"SVC_TCP_443_HTTPS","Services web"
 time,SCH_BUREAU,08:00-18:00,monday-friday,,""
 time,Bureau,08:00-18:00,monday-friday,,""
 time,fenetre-oubliee,00:00-01:00,sunday,,""

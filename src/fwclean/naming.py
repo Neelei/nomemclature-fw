@@ -25,7 +25,7 @@ CTX = "ctx"
 MULTI = "multi"
 RESERVES = frozenset({CTX, MULTI})
 
-# Types sans site ni zone : {PREFIXE}_{DETAIL}.
+# Types sans site ni zone : {PREFIXE}_{DETAIL} (services : SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}).
 SANS_LOCALISATION = frozenset({"service", "groupe-services", "calendrier"})
 
 PREFIXE = {
@@ -73,7 +73,7 @@ LIBELLE_CONSTRUCTEUR = {
     "stormshield": "Stormshield",
 }
 
-_FORME = re.compile(r"[A-Z0-9]+(?:[-_][A-Z0-9]+)*")
+_FORME = re.compile(r"[A-Z0-9]+(?:[-_.][A-Z0-9]+)*")
 
 
 def lire_contextes(chemin: Path) -> tuple[str, ...]:
@@ -169,6 +169,7 @@ def est_conforme_objet(
     sites: Collection[str] = (),
     limite: int = LONGUEUR_MAX,
     vlan: int | None = None,
+    signature: tuple[str, str] | None = None,
 ) -> bool:
     if not forme_valide(nom, limite):
         return False
@@ -176,7 +177,15 @@ def est_conforme_objet(
     if prefixe is None:
         return False
     parties = nom.split(SEP)
-    if any("-" in partie for partie in parties[:-1]) or parties[0] != prefixe:
+    if sorte == "service":
+        return (
+            signature is not None
+            and len(parties) in {3, 4}
+            and tuple(parties[1:3]) == signature
+            and parties[0] == prefixe
+            and all("." not in partie for partie in parties[3:])
+        )
+    if "." in nom or any("-" in partie for partie in parties[:-1]) or parties[0] != prefixe:
         return False
     if sorte in SANS_LOCALISATION:
         return len(parties) == 2
@@ -239,7 +248,6 @@ def proposer_objet(
     contextes: Sequence[str],
     limite: int = LONGUEUR_MAX,
     vlan: int | None = None,
-    libelle_defaut: str = "nd",
 ) -> str:
     """{PREFIXE}_{SITE}_{ZONE}_{DETAIL}, ou {PREFIXE}_{DETAIL} sans site ni zone."""
     localise = site is not None and zone is not None
@@ -247,29 +255,42 @@ def proposer_objet(
     if vlan is not None:
         detail = _avec_vlan(detail, vlan)
     parties = [prefixe, site, zone] if localise else [prefixe]
-    parties.append("-".join(detail) or libelle_defaut)
+    parties.append("-".join(detail) or "nd")
     return tronquer(SEP.join(parties).upper(), limite)
 
 
-_ICMP = {8: "echo", 0: "reply"}
+_JETONS_PROTOCOLE = frozenset({"svc", "tcp", "udp", "sctp", "any", "icmp", "icmp6", "ip"})
 
 
-def libelle_service(empreinte: tuple) -> str:
-    """Protocole et port, pour un service dont l'ancien nom ne dit rien (TCP-443, UDP-67-68)."""
-    if not empreinte:
-        return "ip"
-    proto = empreinte[0][0]
-    morceaux: list[str] = []
-    for protocole, plages in empreinte:
-        for debut, fin, src_debut, src_fin in plages:
-            if protocole in {"icmp", "icmp6"}:
-                if debut < 0:
-                    morceaux.append("any")
-                else:
-                    morceaux.append(_ICMP.get(debut, f"type{debut}"))
-                continue
-            morceaux.append(str(debut) if debut == fin else f"{debut}-{fin}")
-            if src_debut >= 0:
-                morceaux.append(str(src_debut) if src_debut == src_fin else f"s{src_debut}-{src_fin}")
-    suite = [protocole for protocole, _plages in empreinte[1:]]
-    return "-".join([proto, *suite, *morceaux])
+def signature_service(empreinte: tuple) -> tuple[str, str]:
+    """(PROTOCOLE, PORTS) du contenu : ANY pour TCP et UDP ensemble, plage 67-68, liste 88.464."""
+    protocoles = {protocole for protocole, _plages in empreinte}
+    if not protocoles:
+        return "IP", "ANY"
+    if len(protocoles) > 1:
+        protocole = "ANY" if protocoles <= {"tcp", "udp", "sctp"} else "MULTI"
+    else:
+        protocole = next(iter(protocoles)).upper()
+    bornes = sorted({(debut, fin) for _proto, plages in empreinte for debut, fin, *_src in plages})
+    if protocole in {"ICMP", "ICMP6"}:
+        types = [str(debut) for debut, _fin in bornes if debut >= 0]
+        return protocole, ".".join(types) or "ANY"
+    if protocole == "IP":
+        numeros = [str(debut) for debut, _fin in bornes if debut > 0]
+        return protocole, ".".join(numeros) or "ANY"
+    return protocole, ".".join(str(d) if d == f else f"{d}-{f}" for d, f in bornes)
+
+
+def proposer_service(nom: str, empreinte: tuple, limite: int = LONGUEUR_MAX) -> str:
+    """SVC_{PROTOCOLE}_{PORTS}_{LIBELLE} ; le libellé vient de l'ancien nom, sans protocole ni port."""
+    protocole, ports = signature_service(empreinte)
+    nombres = set(re.split(r"[.-]", ports))
+    libelle = [
+        jeton
+        for jeton in normaliser_chaine(nom).split("-")
+        if jeton and jeton not in _JETONS_PROTOCOLE and jeton not in nombres
+    ]
+    parties = ["SVC", protocole, ports]
+    if libelle:
+        parties.append("-".join(libelle))
+    return tronquer(SEP.join(parties).upper(), limite)

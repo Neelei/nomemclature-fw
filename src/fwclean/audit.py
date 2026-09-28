@@ -15,15 +15,16 @@ from fwclean.model import (
     Retrait,
 )
 from fwclean.naming import (
-    ESPACE,
     CTX,
+    ESPACE,
     PREFIXE,
     SANS_LOCALISATION,
     est_conforme_objet,
-    libelle_service,
     longueur_max,
     proposer_objet,
+    proposer_service,
     rendre_unique,
+    signature_service,
 )
 from fwclean.sites import Localisateur, Referentiel
 
@@ -54,8 +55,9 @@ def auditer(
         return longueur_max(inventaire.constructeur, sorte)
 
     def conforme(objet: Objet) -> bool:
+        signature = signature_service(objet.empreinte) if objet.sorte == "service" else None
         return est_conforme_objet(
-            objet.nom, objet.sorte, contextes, sites, limite(objet.sorte), objet.vlan
+            objet.nom, objet.sorte, contextes, sites, limite(objet.sorte), objet.vlan, signature
         )
 
     def origines(objet: Objet) -> set[str]:
@@ -122,16 +124,18 @@ def auditer(
                 commentaires[(objet.sorte, objet.nom)] = _commentaire(objet.sorte, site, zone)
                 continue
         prises.discard(objet.nom)
-        base = proposer_objet(
-            objet.nom,
-            PREFIXE[objet.sorte],
-            site,
-            zone,
-            contextes,
-            limite(objet.sorte),
-            vlan=objet.vlan,
-            libelle_defaut=libelle_service(objet.empreinte) if objet.sorte == "service" else "nd",
-        )
+        if objet.sorte == "service":
+            base = proposer_service(objet.nom, objet.empreinte, limite(objet.sorte))
+        else:
+            base = proposer_objet(
+                objet.nom,
+                PREFIXE[objet.sorte],
+                site,
+                zone,
+                contextes,
+                limite(objet.sorte),
+                vlan=objet.vlan,
+            )
         nouveau = rendre_unique(base, prises, limite(objet.sorte))
         prises.add(nouveau)
         if nouveau == objet.nom:

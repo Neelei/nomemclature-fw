@@ -1,6 +1,6 @@
 from fwclean.audit import auditer
 from fwclean.charger import charger
-from fwclean.naming import est_conforme_objet
+from fwclean.naming import est_conforme_objet, signature_service
 from fwclean.sites import Localisateur, Localisation
 from fwclean.stormshield import assembler, lire_objets
 
@@ -34,7 +34,7 @@ def test_exemple_stormshield(racine, contextes, referentiel):
         ("groupe-adresses", "GRP_SIEGE_DMZ_WEB", ("Groupe_Web",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("hote", "HST_SIEGE_DMZ_WEB-01", ("Web_DMZ",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("reseau", "NET_SIEGE_LAN_UTILISATEURS", ("LAN_Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("service", "SVC_HTTPS", ("HTTPS_custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("service", "SVC_TCP_443_HTTPS", ("HTTPS_custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
     ]
     assert resultat.fusions[2].contenu == "10.1.1.10/32"
     assert [(item.sorte, item.nom) for item in resultat.retraits] == [
@@ -50,15 +50,17 @@ def test_exemple_stormshield(racine, contextes, referentiel):
 
 def test_plage_de_ports_et_protocole(contextes):
     texte = """
-service,SVC_PLAGE-HAUTE,tcp,,2000,2032,""
+service,SVC_TCP_2000-2032_HAUTE,tcp,,2000,2032,""
 protocol,ospf,89,"OSPF"
 """
     objets, ignores = lire_objets(texte)
     assert ignores == ()
     par_nom = {objet.nom: objet for objet in objets}
-    assert par_nom["SVC_PLAGE-HAUTE"].detail == "tcp/2000-2032"
+    assert par_nom["SVC_TCP_2000-2032_HAUTE"].detail == "tcp/2000-2032"
     assert par_nom["ospf"].detail == "ip/89"
-    assert est_conforme_objet("SVC_PLAGE-HAUTE", "service", contextes)
+    signature = signature_service(par_nom["SVC_TCP_2000-2032_HAUTE"].empreinte)
+    assert signature == ("TCP", "2000-2032")
+    assert est_conforme_objet("SVC_TCP_2000-2032_HAUTE", "service", contextes, signature=signature)
 
 
 def test_hote_double_pile(contextes, referentiel):

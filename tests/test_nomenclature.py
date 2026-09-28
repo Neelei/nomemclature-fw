@@ -1,11 +1,12 @@
 from fwclean.contenu import empreinte_service
 from fwclean.naming import (
     est_conforme_objet,
-    libelle_service,
     lire_contextes,
     longueur_max,
     proposer_objet,
+    proposer_service,
     rendre_unique,
+    signature_service,
     tronquer,
 )
 
@@ -61,15 +62,50 @@ def test_objets_conformes_et_plafond(contextes):
     assert not est_conforme_objet(nom + "B", "hote", contextes, SITES)
 
 
+def _service(*elements):
+    return empreinte_service([(proto, tuple((d, f, -1, -1) for d, f in ports)) for proto, ports in elements])
+
+
+HTTPS = _service(("tcp", [(443, 443)]))
+
+
 def test_services_calendriers_sans_site_ni_zone(contextes):
-    assert est_conforme_objet("SVC_HTTPS", "service", contextes)
-    assert est_conforme_objet("SVC_CITRIX-LICENCING-7279", "service", contextes)
+    assert est_conforme_objet("SVC_TCP_443_HTTPS", "service", contextes, signature=("TCP", "443"))
+    assert est_conforme_objet("SVC_TCP_443", "service", contextes, signature=("TCP", "443"))
     assert est_conforme_objet("SGRP_ACTIVE-DIRECTORY", "groupe-services", contextes)
     assert est_conforme_objet("SCH_BUREAU", "calendrier", contextes)
-    assert not est_conforme_objet("SVC_TCP_443", "service", contextes)
+    assert not est_conforme_objet("SVC_HTTPS", "service", contextes, signature=("TCP", "443"))
+    assert not est_conforme_objet("SVC_UDP_443_HTTPS", "service", contextes, signature=("TCP", "443"))
+    assert not est_conforme_objet("SVC_TCP_8443_HTTPS", "service", contextes, signature=("TCP", "443"))
+    assert not est_conforme_objet("SVC_TCP_443_HT.TPS", "service", contextes, signature=("TCP", "443"))
     assert not est_conforme_objet("SGRP_SIEGE_DMZ_WEB", "groupe-services", contextes, SITES)
     assert not est_conforme_objet("SCH_CTX_LAN_BUREAU", "calendrier", contextes)
-    assert not est_conforme_objet("SVC-HTTPS", "service", contextes)
+    assert not est_conforme_objet("HST_SIEGE_LAN_A.B", "hote", contextes, SITES)
+
+
+def test_signature_des_services():
+    assert signature_service(HTTPS) == ("TCP", "443")
+    assert signature_service(_service(("udp", [(67, 68)]))) == ("UDP", "67-68")
+    assert signature_service(_service(("tcp", [(53, 53)]), ("udp", [(53, 53)]))) == ("ANY", "53")
+    kerberos = _service(("tcp", [(88, 88), (464, 464)]), ("udp", [(88, 88), (464, 464)]))
+    assert signature_service(kerberos) == ("ANY", "88.464")
+    assert signature_service(_service(("icmp", [(8, 8)]))) == ("ICMP", "8")
+    assert signature_service(_service(("icmp", [(-1, -1)]))) == ("ICMP", "ANY")
+    assert signature_service(_service(("ip", [(47, 47)]))) == ("IP", "47")
+    assert signature_service(_service(("ip", [(0, 0)]))) == ("IP", "ANY")
+
+
+def test_services_gardent_leur_libelle_avec_protocole_et_port():
+    assert proposer_service("HTTP-8080", _service(("tcp", [(8080, 8080)]))) == "SVC_TCP_8080_HTTP"
+    assert proposer_service("HTTPS", HTTPS) == "SVC_TCP_443_HTTPS"
+    assert proposer_service("SVC_TCP_443", HTTPS) == "SVC_TCP_443"
+    assert proposer_service("LDAP_UDP", _service(("udp", [(389, 389)]))) == "SVC_UDP_389_LDAP"
+    assert proposer_service("MS Global Catalog", _service(("tcp", [(3268, 3269)]))) == (
+        "SVC_TCP_3268-3269_MS-GLOBAL-CATALOG"
+    )
+    dns = _service(("tcp", [(53, 53)]), ("udp", [(53, 53)]))
+    assert proposer_service("DNS", dns) == "SVC_ANY_53_DNS"
+    assert proposer_service("PING", _service(("icmp", [(8, 8)]))) == "SVC_ICMP_8_PING"
 
 
 def test_reseau_avec_vlan(contextes):
@@ -102,16 +138,10 @@ def test_proposition_de_noms(contextes):
     assert proposer_objet("Hôte_DMZ", "HST", "siege", "lan", contextes) == "HST_SIEGE_LAN_HOTE-DMZ"
 
 
-def test_services_gardent_leur_libelle(contextes):
-    assert proposer_objet("HTTP-8080", "SVC", None, None, contextes) == "SVC_HTTP-8080"
-    assert proposer_objet("MS Global Catalog", "SVC", None, None, contextes) == "SVC_MS-GLOBAL-CATALOG"
-    assert proposer_objet("DMZ-web", "SVC", None, None, contextes) == "SVC_DMZ-WEB"
-    assert proposer_objet("SVC_TCP_443", "SVC", None, None, contextes) == "SVC_TCP-443"
+def test_groupes_de_services_et_calendriers(contextes):
+    assert proposer_objet("Active Directory", "SGRP", None, None, contextes) == "SGRP_ACTIVE-DIRECTORY"
     assert proposer_objet("SGRP_CTX_DMZ_WEB", "SGRP", None, None, contextes) == "SGRP_WEB"
     assert proposer_objet("Bureau", "SCH", None, None, contextes) == "SCH_BUREAU"
-    empreinte = empreinte_service([("tcp", ((443, 443, -1, -1),))])
-    assert libelle_service(empreinte) == "tcp-443"
-    assert proposer_objet("svc", "SVC", None, None, contextes, libelle_defaut="tcp-443") == "SVC_TCP-443"
 
 
 def test_limites_fortigate(contextes):

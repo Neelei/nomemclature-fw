@@ -15,7 +15,7 @@ def _regle(nom: str, destination: str) -> Regle:
         active=True,
         sources=("NET_SIEGE_LAN_UTILISATEURS",),
         destinations=(destination,),
-        services=("SVC_HTTPS",),
+        services=("SVC_TCP_443_HTTPS",),
         interfaces_source=("lan",),
         interfaces_destination=("dmz",),
     )

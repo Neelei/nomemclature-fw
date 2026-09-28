@@ -51,7 +51,7 @@ reseau;site;zone
 10.1.1.0/24;siege;dmz
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Sur FortiGate, un réseau porte son VLAN ID (`NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`). Services, groupes de services et calendriers n'ont ni site ni zone et gardent leur libellé (`SVC_HTTP-8080`, `SCH_BUREAU`).
+Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Sur FortiGate, un réseau porte son VLAN ID (`NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`). Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
 
@@ -75,7 +75,7 @@ uv run fwclean audit examples/fortigate/nomenclature.conf --reseaux reseaux.exem
 uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie out/stormshield
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_APPLI-METIER-8443`.
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`.
 
 ## Tests
 
