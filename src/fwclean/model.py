@@ -108,3 +108,5 @@ class Resultat:
     fusions: tuple[Fusion, ...]
     retraits: tuple[Retrait, ...]
     referentiel: str = "aucun : objets à adresse IP signalés à revoir"
+    # Objets de la base par défaut SNS, laissés tels quels.
+    natifs: tuple[Objet, ...] = ()

@@ -28,6 +28,7 @@ from fwclean.naming import (
     signature_service,
 )
 from fwclean.sites import Localisateur, Referentiel, appliquer_vlans
+from fwclean.sns_natifs import est_natif
 
 _RAISONS = {
     "hote": "adresse absente de reseaux.csv",
@@ -65,6 +66,16 @@ def auditer(
     def origines(objet: Objet) -> set[str]:
         return refs.get((objet.sorte, objet.nom), set())
 
+    natifs = tuple(
+        objet
+        for objet in inventaire.objets
+        if inventaire.constructeur == "stormshield" and est_natif(objet.sorte, objet.nom)
+    )
+    natif_ids = {(objet.sorte, objet.nom) for objet in natifs}
+
+    def natif(objet: Objet) -> bool:
+        return (objet.sorte, objet.nom) in natif_ids
+
     groupes: dict[tuple, list[Objet]] = defaultdict(list)
     for objet in inventaire.objets:
         groupes[(objet.sorte, objet.empreinte)].append(objet)
@@ -77,13 +88,21 @@ def auditer(
         conserve = min(
             membres,
             key=lambda objet: (
+                0 if natif(objet) else 1,
                 0 if conforme(objet) else 1,
                 -len(origines(objet)),
                 len(objet.nom),
                 objet.nom,
             ),
         )
-        partis = tuple(sorted((objet for objet in membres if objet != conserve), key=lambda o: o.nom))
+        partis = tuple(
+            sorted(
+                (objet for objet in membres if objet != conserve and not natif(objet)),
+                key=lambda o: o.nom,
+            )
+        )
+        if not partis:
+            continue
         cites: set[str] = set()
         for parti in partis:
             supprimes[(parti.sorte, parti.nom)] = parti
@@ -95,7 +114,9 @@ def auditer(
             (
                 objet
                 for objet in inventaire.objets
-                if (objet.sorte, objet.nom) not in supprimes and not origines(objet)
+                if (objet.sorte, objet.nom) not in supprimes
+                and not natif(objet)
+                and not origines(objet)
             ),
             key=lambda objet: (objet.sorte, objet.nom),
         )
@@ -108,6 +129,7 @@ def auditer(
             for objet in inventaire.objets
             if (objet.sorte, objet.nom) not in supprimes
             and (objet.sorte, objet.nom) not in orphelin_ids
+            and not natif(objet)
             and not conforme(objet)
         ),
         key=lambda objet: (objet.sorte, objet.nom),
@@ -176,7 +198,7 @@ def auditer(
     )
     non_conformes = _non_conformes(
         inventaire,
-        conforme,
+        lambda objet: natif(objet) or conforme(objet),
         supprimes,
         orphelin_ids,
         {(renommage.sorte, renommage.ancien): renommage for renommage in renommages},
@@ -189,6 +211,7 @@ def auditer(
         fusions=fusions,
         retraits=retraits,
         referentiel=referentiel.decrire(),
+        natifs=tuple(sorted(natifs, key=lambda objet: (objet.sorte, objet.nom))),
     )
 
 

@@ -183,8 +183,7 @@ def test_exemple_natif(racine, contextes, referentiel):
     assert inventaire.retraits_suspendus is None
     assert [(item.sorte, item.nom) for item in resultat.retraits] == [
         ("groupe-adresses", "grp_oublie"),
-        ("protocole", "rdp"),
-        ("reseau", "IANA_v6_doc"),
+        ("protocole", "esp_ancien"),
     ]
     assert AVERTISSEMENT_NON_GERES in inventaire.avertissements
     assert VERIFIER_USAGE in inventaire.avertissements
@@ -194,7 +193,16 @@ def test_exemple_natif(racine, contextes, referentiel):
     assert renommages[("reseau", "Res-DMZ")] == "NET_SIEGE_DMZ_VLAN66-RES"
     assert renommages[("hote", "srv_web")] == "HST_SIEGE_DMZ_SRV-WEB"
     assert renommages[("protocole", "gre_tunnel")] == "SVC_IP_47_GRE-TUNNEL"
-    assert renommages[("service", "rdp")] == "SVC_TCP_3389_RDP"
+    natifs = {(objet.sorte, objet.nom) for objet in resultat.natifs}
+    assert natifs == {
+        ("reseau", "IANA_v6_doc"),
+        ("service", "syslog"),
+        ("service", "rdp"),
+        ("protocole", "rdp"),
+        ("groupe-services", "web"),
+    }
+    assert not natifs & set(renommages)
+    assert not natifs & {(item.sorte, item.nom) for item in resultat.non_conformes}
     assert renommages[("service", "dns_any")] == "SVC_ANY_53_DNS"
     assert ("hote", "srv-oublie") not in renommages
     revoir = {item.nom: item.commentaire for item in resultat.non_conformes if item.traitement == "revoir"}
@@ -203,6 +211,7 @@ def test_exemple_natif(racine, contextes, referentiel):
     fusions = {(item.sorte, item.conserve): item.supprimes for item in resultat.fusions}
     assert fusions[("hote", "srv_web")] == ("Web_DMZ",)
     assert fusions[("service", "SVC_TCP_443_HTTPS")] == ("https_ep",)
+    assert fusions[("service", "rdp")] == ("rdp_admin",)
 
 
 def test_groupes_absents_suspendent_les_retraits(racine, tmp_path, contextes, referentiel):
@@ -338,13 +347,16 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
         ]
     )
     assert code == 0
-    assert "orphelins : 3." in capsys.readouterr().out
+    assert "orphelins : 2." in capsys.readouterr().out
     plan = json.loads((sortie / "plan.json").read_text(encoding="utf-8"))
-    assert [item["nom"] for item in plan["retraits"]] == ["grp_oublie", "rdp", "IANA_v6_doc"]
+    assert [item["nom"] for item in plan["retraits"]] == ["grp_oublie", "esp_ancien"]
     assert plan["avertissements"]["retraits_suspendus"] is None
     assert plan["avertissements"]["noms_non_definis"] == ["Routeur_Principal", "global_SRV_PROXY", "mail"]
     rapport = (sortie / "rapport.md").read_text(encoding="utf-8")
     assert "## Avertissements" in rapport and "`global_SRV_PROXY`" in rapport
     assert "objets routeur non lus" in rapport
-    assert "| Orphelins | 3 |" in rapport
+    assert "| Orphelins | 2 |" in rapport
+    assert "| Objets natifs SNS ignorés | 5 |" in rapport
+    assert "## Objets natifs SNS ignorés" in rapport
+    assert {"sorte": "reseau", "nom": "IANA_v6_doc"} in plan["natifs_ignores"]
     assert "**À vérifier avant chaque suppression** : « Vérifier l'utilisation »" in rapport

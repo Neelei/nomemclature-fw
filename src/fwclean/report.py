@@ -25,7 +25,7 @@ def ecrire(resultat: Resultat, dossier: Path) -> tuple[Path, Path]:
 
 
 def plan_dict(resultat: Resultat) -> dict:
-    return {
+    plan = {
         "avertissement": AVERTISSEMENT,
         "constructeur": resultat.inventaire.constructeur,
         "sources": list(resultat.inventaire.sources),
@@ -64,6 +64,11 @@ def plan_dict(resultat: Resultat) -> dict:
             if item.traitement == "revoir"
         ],
     }
+    if resultat.inventaire.constructeur == "stormshield":
+        plan["natifs_ignores"] = [
+            {"sorte": objet.sorte, "nom": objet.nom} for objet in resultat.natifs
+        ]
+    return plan
 
 
 def _json(resultat: Resultat) -> str:
@@ -96,8 +101,10 @@ def _markdown(resultat: Resultat) -> str:
         f"| Orphelins | {'suspendus' if inventaire.retraits_suspendus else len(resultat.retraits)} |",
         f"| Objets ignorés | {len(inventaire.ignores)} |",
         f"| Noms cités non définis | {len(inventaire.non_definis)} |",
-        "",
     ]
+    if inventaire.constructeur == "stormshield":
+        lignes.append(f"| Objets natifs SNS ignorés | {len(resultat.natifs)} |")
+    lignes.append("")
     lignes.extend(_avertissements(inventaire))
     lignes.extend(["## Noms non conformes", ""])
     if resultat.non_conformes:
@@ -166,6 +173,23 @@ def _markdown(resultat: Resultat) -> str:
             )
     else:
         lignes.append("Aucun.")
+    if resultat.natifs:
+        lignes.extend(
+            [
+                "",
+                "## Objets natifs SNS ignorés",
+                "",
+                "Objets de la base par défaut Stormshield : jamais renommés, supprimés ni "
+                "retirés. Un objet natif peut être l'objet conservé d'une fusion.",
+                "",
+                "| Sorte | Nom |",
+                "| --- | --- |",
+            ]
+        )
+        for objet in resultat.natifs:
+            lignes.append(
+                f"| {_cell(LIBELLE.get(objet.sorte, objet.sorte))} | {_cell(objet.nom)} |"
+            )
     if inventaire.ignores:
         lignes.extend(["", "## Objets ignorés", ""])
         for ignore in inventaire.ignores:

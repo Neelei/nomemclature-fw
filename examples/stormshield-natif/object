@@ -1,6 +1,7 @@
 # Exemple synthétique du fichier natif SNS /usr/Firewall/ConfigFiles/object (aucune donnée réelle).
 # Cas couverts : réseau sous VLAN d'interface, doublons stricts, orphelin, hôte double pile,
 # hôte dynamique (nom DNS, non renommable), MAC ignorées, services any et plages, protocoles.
+# Objets natifs SNS (base par défaut, jamais renommés ni retirés) : IANA_v6_doc, syslog, rdp.
 [Network]
 Res-VLAN10=10.0.0.0/24      # LAN utilisateurs
 NET_SIEGE_LAN_UTILISATEURS=10.0.0.0/255.255.255.0
@@ -15,10 +16,12 @@ dns_any=53/any      # TCP et UDP
 plage_appli=2000 - 2032/tcp
 syslog=514/udp
 rdp=3389/TCP
+rdp_admin=3389/tcp    # doublon d'un service natif : rdp est conservé
 
 [Protocol]
 gre_tunnel=47
 rdp=27      # même nom qu'un service : espace de noms distinct
+esp_ancien=50
 
 [Internet]
 operator=ne
