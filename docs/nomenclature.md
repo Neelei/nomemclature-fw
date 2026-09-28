@@ -81,17 +81,19 @@ Un nom est jugé sur sa forme : `HST_SIEGE_LAN_X` est conforme dès que `SIEGE` 
 Fichier à la racine du projet, fourni par l'équipe réseau. Autre chemin : `--reseaux`.
 
 ```text
-reseau;site;zone
-10.1.0.0/16;siege;lan
-10.1.1.0/24;siege;dmz
+reseau;site;zone;vlan
+10.0.0.0/24;siege;lan;11
+10.1.0.0/16;siege;lan;
+10.1.1.0/24;siege;dmz;12
 10.210.0.0/24;gras;lan
 ```
 
-- séparateur `;`, en-tête `reseau;site;zone` obligatoire ;
+- séparateur `;`, en-tête `reseau;site;zone` ou `reseau;site;zone;vlan` obligatoire ;
 - un réseau CIDR par ligne (IPv4 ou IPv6) ;
 - site et zone en minuscules ; la zone doit être dans `contextes.txt` ;
+- colonne `vlan` facultative : VLAN ID de 1 à 4094, vide si le réseau n'a pas de VLAN ; avec l'en-tête à quatre colonnes, une ligne à trois champs est acceptée (vlan vide) ;
 - lignes vides et commentaires `#` ignorés ;
-- un même réseau déclaré deux fois avec un site ou une zone différents est refusé.
+- un même réseau déclaré deux fois avec un site, une zone ou un VLAN différents est refusé.
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le dépôt versionne seulement [`reseaux.exemple.csv`](../reseaux.exemple.csv), à copier. Sans `reseaux.csv`, l'audit tourne quand même : aucun site n'est connu, les objets d'adresse non conformes sont tous signalés à revoir.
 
@@ -119,7 +121,11 @@ Sur FortiGate, les interfaces VLAN de `config system interface` (`set vlanid`) d
 - une adresse `interface-subnet` prend le VLAN de l'interface qu'elle cite ;
 - une adresse `ipmask` prend le VLAN de l'interface dont le réseau connecté la contient (le plus précis s'il y en a plusieurs).
 
-Le détail commence alors par `VLAN{ID}`, et les mentions de VLAN de l'ancien nom sont retirées : `SRV-ESX-MSA [vlan11]` → `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`, `MEETING [valn50]` → `NET_SIEGE_LAN_VLAN50-MEETING`. L'ID vient toujours de la configuration : `EDF [vlan20]`, sur une interface en VLAN 52, devient `NET_SIEGE_LAN_VLAN52-EDF`. Un réseau dont le VLAN est connu et dont le nom ne contient pas `VLAN{ID}` n'est pas conforme. Sans VLAN connu (réseau distant, export Stormshield), rien n'est ajouté.
+Sur Stormshield (fichiers natifs), les interfaces `[vlanN]` du fichier `Network` à adresse statique donnent le VLAN (`Tag=`) des réseaux qu'elles contiennent, de la même façon. Une interface en `dhcp` ne donne rien.
+
+Un réseau sans VLAN connu dans la configuration prend ensuite le VLAN du **référentiel** : l'entrée de `reseaux.csv` la plus précise qui le contient, si elle a une colonne `vlan` renseignée. Si cette entrée la plus précise n'a pas de VLAN, rien n'est ajouté, même si un réseau plus large en a un. C'est ce qui donne `NET_SIEGE_LAN_VLAN11-RES` à `Res-VLAN11` (`10.0.0.0/24`) sur un SNS de sortie Internet dont les VLAN internes sont routés vers le FortiGate : `fwclean reseaux` sur le FortiGate écrit le `vlanid` de chaque interface dans la colonne `vlan`. Le VLAN de la configuration prime toujours sur celui du référentiel.
+
+Le détail commence alors par `VLAN{ID}`, et les mentions de VLAN de l'ancien nom sont retirées : `SRV-ESX-MSA [vlan11]` → `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`, `MEETING [valn50]` → `NET_SIEGE_LAN_VLAN50-MEETING`. L'ID vient de la configuration (ou du référentiel), jamais de l'ancien nom : `EDF [vlan20]`, sur une interface en VLAN 52, devient `NET_SIEGE_LAN_VLAN52-EDF`. Un réseau dont le VLAN est connu et dont le nom ne contient pas `VLAN{ID}` n'est pas conforme. Sans VLAN connu (réseau distant, CSV Stormshield, référentiel sans VLAN), rien n'est ajouté.
 
 ## Services
 
@@ -130,6 +136,8 @@ Un service n'a ni site ni zone. Sa forme est `SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}`
 | protocole | `TCP`, `UDP`, `ANY` quand TCP et UDP sont tous deux ouverts ; `ICMP`, `ICMP6`, `IP`, `SCTP` pour les autres | `SVC_TCP_443_HTTPS`, `SVC_UDP_389_LDAP`, `SVC_ANY_53_DNS` |
 | ports | port de destination ; plage en `-` ; plusieurs ports séparés par `.` ; type ICMP ou numéro de protocole IP ; `ANY` pour tout ICMP ou tout IP | `SVC_UDP_67-68_DHCP`, `SVC_ANY_88.464_KERBEROS`, `SVC_ICMP_8_PING`, `SVC_IP_47_GRE` |
 | libellé | l'ancien nom, sans les mots de protocole ni les numéros de port déjà présents ; facultatif | `HTTP-8080` → `SVC_TCP_8080_HTTP`, `MS Global Catalog` → `SVC_TCP_3268-3269_MS-GLOBAL-CATALOG`, `SVC_TCP_443` reste `SVC_TCP_443` |
+
+Sur Stormshield, un objet `[Protocol]` (fichier natif `object`, cité par `ipproto` dans une règle) suit la même forme avec le protocole `IP` : `gre_tunnel=47` → `SVC_IP_47_GRE-TUNNEL`. Il a son propre espace de noms : un protocole `rdp` (IP 27) et un service `rdp` (TCP/3389) coexistent et deviennent `SVC_IP_27_RDP` et `SVC_TCP_3389_RDP`.
 
 Protocole et ports sont calculés sur le **contenu** du service, pas sur son ancien nom : `SVC_UDP_443_HTTPS` pour un service TCP/443 n'est pas conforme. Quand TCP et UDP n'ouvrent pas les mêmes ports, `ANY` est suivi de tous les ports (`netbios` → `SVC_ANY_137.138.139_NETBIOS`) ; le détail par protocole reste dans le contenu, repris par le rapport. Les ports source ne figurent pas dans le nom.
 
@@ -164,3 +172,5 @@ Si ce nom désigne un doublon strict, le plan ne le renomme pas : il le fusionne
 ## Ce que la convention ne couvre pas
 
 Noms de règles, utilisateurs, certificats, interfaces, zones constructeur, politiques VPN et objets géographiques ou dynamiques. Ces derniers sont signalés comme ignorés, sans proposition de nom.
+
+Sur Stormshield, le nom d'un objet `[Fqdn]` ou d'un hôte `resolve=dynamic` est le nom DNS que le SNS résout : le renommer casserait la résolution. Ces objets sont listés à revoir avec ce commentaire, jamais renommés. Les objets globaux SMC (`global_*`) ne sont pas dans les fichiers locaux : ils sont seulement cités, ni audités ni renommés.

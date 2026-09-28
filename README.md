@@ -29,7 +29,7 @@ mkdir -p inbox
 ```
 
 - FortiGate : la sauvegarde texte `.conf`.
-- Stormshield : le CSV des objets et le CSV des règles de filtrage. Une sauvegarde `.na` est chiffrée, elle est refusée. Le détail des colonnes est dans la méthode de nettoyage. Déposer aussi `routes.csv` si des objets ne sont cités que par le routage.
+- Stormshield : de préférence les fichiers natifs de `/usr/Firewall/ConfigFiles` (`object`, `objectgroup`, `servicegroup`, `router`, `Network`, `route`, `Filter`, `global`) dans `inbox/stormshield/`. La commande SSH qui les rassemble est dans [la méthode](docs/methode-nettoyage.md#stormshield-fichiers-natifs). Sinon, le CSV des objets et le CSV des règles de filtrage (et `routes.csv` si des objets ne sont cités que par le routage). Une sauvegarde `.na` est chiffrée, elle est refusée.
 
 ## Lancer l'audit
 
@@ -37,21 +37,22 @@ mkdir -p inbox
 uv run fwclean audit inbox/pare-feu.conf --sortie out
 uv run fwclean audit inbox/objets.csv inbox/regles.csv --sortie out
 uv run fwclean audit inbox/ --sortie out
+uv run fwclean audit inbox/stormshield --sortie out/stormshield
 ```
 
-Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` pointe vers un autre fichier de zones que `./contextes.txt`, `--reseaux` vers un autre référentiel que `./reseaux.csv`.
+Un audit porte sur un seul constructeur et un seul format (FortiGate, CSV Stormshield ou fichiers natifs SNS). Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` pointe vers un autre fichier de zones que `./contextes.txt`, `--reseaux` vers un autre référentiel que `./reseaux.csv`.
 
 ## Sites et zones
 
 Les noms d'objets prennent la forme `HST_SIEGE_LAN_ZABBIXSRV`. Les règles ne sont pas renommées pour le moment. Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
 
 ```text
-reseau;site;zone
-10.1.0.0/16;siege;lan
-10.1.1.0/24;siege;dmz
+reseau;site;zone;vlan
+10.1.0.0/16;siege;lan;
+10.1.1.0/24;siege;dmz;12
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Sur FortiGate, un réseau porte son VLAN ID (`NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`). Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
+Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Un réseau porte son VLAN ID (`NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`) : celui de l'interface VLAN FortiGate ou SNS qui le contient, sinon celui de la colonne facultative `vlan` de `reseaux.csv`. Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
 
@@ -63,7 +64,7 @@ puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit t
 
 La commande affiche les compteurs et écrit :
 
-- `out/rapport.md` — noms non conformes, doublons, orphelins ;
+- `out/rapport.md` — avertissements, noms non conformes, doublons, orphelins ;
 - `out/plan.json` — renommages, fusions et retraits proposés.
 
 Rien n'est appliqué. Le plan se relit avant toute modification sur l'équipement, dans l'ordre : renommage, fusion des doublons stricts, retrait des orphelins.
@@ -73,9 +74,12 @@ Pour voir le comportement sans export réel :
 ```bash
 uv run fwclean audit examples/fortigate/nomenclature.conf --reseaux reseaux.exemple.csv --sortie out/fortigate
 uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie out/stormshield
+uv run fwclean audit examples/stormshield-natif --reseaux reseaux.exemple.csv --sortie out/stormshield-natif
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`.
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. L'exemple SNS natif n'a pas de fichier `router` : ses retraits sont suspendus, et la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC, groupe absent).
+
+Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup`, `servicegroup` et `router` sont lus : sans eux, un membre de groupe ou une passerelle paraîtrait orphelin. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés.
 
 ## Tests
 
@@ -89,7 +93,9 @@ uv run pytest
 uv run fwclean reseaux inbox/pare-feu.conf --site siege
 ```
 
-Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate, la zone venant de la zone FortiGate de chaque interface, traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`). Ajouter ensuite à la main les réseaux non connectés. `--ecraser` remplace un fichier existant.
+Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate, la zone venant de la zone FortiGate de chaque interface, traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`), et le `vlanid` dans la colonne `vlan`. Ajouter ensuite à la main les réseaux non connectés. `--ecraser` remplace un fichier existant.
+
+Sur un SNS, `uv run fwclean reseaux inbox/stormshield --site siege` lit le fichier `Network` : une ligne par interface à adresse statique, zone d'après le nom de l'interface, `vlan` = `Tag`.
 
 ## Produire le script d'application
 

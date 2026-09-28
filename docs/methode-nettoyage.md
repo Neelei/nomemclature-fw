@@ -12,7 +12,7 @@ Un objet utilisé seulement par une règle désactivée n'est pas orphelin.
 
 Le contenu (adresse, membres, ports, action, source, destination, service) reste celui de l'export. Le nom proposé suit [la nomenclature](nomenclature.md).
 
-Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Un réseau dont le VLAN est connu (FortiGate) porte `VLAN{ID}` dans son détail. Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte son protocole et ses ports, calculés sur son contenu, puis le libellé de son ancien nom (`HTTP-8080` → `SVC_TCP_8080_HTTP`). Le détail est dans [la nomenclature](nomenclature.md#déduction).
+Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Un réseau dont le VLAN est connu (interface VLAN FortiGate ou SNS, sinon colonne `vlan` de `reseaux.csv`) porte `VLAN{ID}` dans son détail. Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte son protocole et ses ports, calculés sur son contenu, puis le libellé de son ancien nom (`HTTP-8080` → `SVC_TCP_8080_HTTP`). Le détail est dans [la nomenclature](nomenclature.md#déduction).
 
 Un objet d'adresse sans correspondance de site ou de zone n'est **pas renommé** : il est listé à revoir, avec un commentaire qui dit ce qui manque. Compléter `reseaux.csv` puis relancer l'audit.
 
@@ -56,7 +56,10 @@ Une référence est l'une des suivantes, qu'elle vienne d'un objet lui-même inu
 - membre d'un groupe d'adresses ou de services ;
 - objet mappé par une VIP ;
 - règle de NAT ;
-- route statique ou policy-route, quand l'export la contient.
+- route statique ou policy-route, quand l'export la contient ;
+- sur Stormshield : route par défaut, routes statiques, routeur ou passerelle cité par une règle (`route`), objets traduits du NAT (`->`).
+
+Si l'export ne permet pas de voir toutes les références, **aucun retrait n'est proposé** : le rapport affiche « Orphelins : suspendus » et la raison, le plan garde `retraits` vide et l'explique dans `avertissements.retraits_suspendus`. C'est le cas sur Stormshield tant que `objectgroup`, `servicegroup` et `router` ne sont pas tous lus (voir [Stormshield](#stormshield-fichiers-natifs)). Les orphelins sont alors traités comme les autres objets : renommés s'ils sont non conformes.
 
 L'objet conservé d'une fusion n'est pas listé comme doublon à retirer. S'il n'a ensuite aucune référence, il apparaît dans les retraits : la fusion a d'abord éliminé les copies, le retrait concerne le survivant.
 
@@ -72,13 +75,13 @@ Les fichiers réels se déposent dans `inbox/` (ignoré par git). Les exemples d
 
 ### Référentiel réseaux
 
-`reseaux.csv` à la racine (ignoré par git), ou le fichier donné par `--reseaux`. Format `reseau;site;zone`, un CIDR par ligne, site et zone en minuscules, commentaires `#` acceptés :
+`reseaux.csv` à la racine (ignoré par git), ou le fichier donné par `--reseaux`. Format `reseau;site;zone` ou `reseau;site;zone;vlan`, un CIDR par ligne, site et zone en minuscules, vlan vide permis, commentaires `#` acceptés :
 
 ```text
-reseau;site;zone
-10.1.0.0/16;siege;lan
-10.1.1.0/24;siege;dmz
-10.210.0.0/24;gras;lan
+reseau;site;zone;vlan
+10.1.0.0/16;siege;lan;
+10.1.1.0/24;siege;dmz;12
+10.210.0.0/24;gras;lan;210
 ```
 
 Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv), ou le générer depuis une sauvegarde FortiGate :
@@ -89,7 +92,17 @@ fwclean reseaux inbox/pare-feu.conf --site siege
 
 La commande lit `config system interface` (une ligne par interface qui porte une IP), `config system zone` et les zones SD-WAN (`config system sdwan` → `members`). La zone FortiGate de l'interface, ou le nom de l'interface si elle n'est dans aucune zone, est traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`, `oob = mgmt`) ; un nom qui est déjà une zone (`LAN` → `lan`) n'a pas besoin de correspondance. Une interface sans zone traduite est écrite en commentaire, à compléter. Le fichier existant n'est remplacé qu'avec `--ecraser`. Les réseaux non connectés (sites distants, pools VPN, IP publiques) sont à ajouter à la main.
 
-Un réseau invalide, une zone absente de `contextes.txt` ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et les objets d'adresse non conformes sont tous listés à revoir.
+Sur un SNS, la même commande lit le fichier natif `Network` (le fichier ou le dossier qui le contient) :
+
+```bash
+fwclean reseaux inbox/stormshield --site siege --sortie reseaux-sns.csv
+```
+
+Une ligne par adresse statique d'interface (`AddressN`/`MaskN`, `IPv6AddressN`/`IPv6MaskN`), loopback exclue ; les interfaces en `dhcp` n'apparaissent pas. La zone vient du nom de l'interface (`Name=`), traduit par `contextes.txt` (ajouter par exemple `wan = FOFreePro, FObouygues`) ; sinon la ligne est écrite en commentaire. Une interface désactivée (`State=0`) est aussi laissée en commentaire. `vlan` reprend le `Tag=` de l'interface VLAN.
+
+La colonne `vlan` (facultative) donne le VLAN d'un réseau quand la configuration auditée ne le connaît pas ; `fwclean reseaux` la remplit avec le `vlanid` FortiGate ou le `Tag` SNS. Voir [la nomenclature](nomenclature.md#réseaux-et-vlan).
+
+Un réseau invalide, une zone absente de `contextes.txt`, un VLAN invalide ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et les objets d'adresse non conformes sont tous listés à revoir.
 
 ### FortiGate
 
@@ -111,9 +124,48 @@ Un hôte FortiGate est une adresse `ipmask` en `/32`. Une adresse `iprange` est 
 fwclean audit inbox/pare-feu.conf --sortie out
 ```
 
-### Stormshield
+### Stormshield (fichiers natifs)
 
-Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Exporter deux CSV, et éventuellement les routes.
+Le plus fiable : copier les fichiers de configuration du SNS, dans `/usr/Firewall/ConfigFiles`. Par SSH sur le firewall (compte `admin`) :
+
+```bash
+cd /usr/Firewall/ConfigFiles && tar czf /tmp/sns-config.tgz object objectgroup servicegroup router Network route Filter global
+```
+
+puis récupérer `/tmp/sns-config.tgz` (scp), le décompresser dans `inbox/stormshield/` et lancer :
+
+```bash
+fwclean audit inbox/stormshield --sortie out/stormshield
+```
+
+Un fichier absent sur le SNS fait échouer `tar` : le retirer de la liste et relancer. Les fichiers n'ont pas de suffixe ; ils sont reconnus par leur nom, ou par leur contenu (sections `[Host]`, `[Filter]`, `[StaticRoutes]`, `[ethernetN]`…).
+
+| Fichier | Contenu | Lu |
+| --- | --- | --- |
+| `object` | `[Network]`, `[Host]` (hôtes et plages `a-b`), `[Fqdn]`, `[Service]` (`port[-port]/tcp\|udp\|any`, `any` = TCP et UDP), `[Protocol]` (numéro IP) | oui ; valeurs MAC seules et plages MAC ignorées et signalées ; `[Internet]` ignoré |
+| `objectgroup` | groupes d'adresses : `[nom]` puis un membre par ligne | oui |
+| `servicegroup` | groupes de services, même forme | oui |
+| `router` | objets routeur (passerelles) | reconnu, pas encore lu (format non vérifié) ; vide, il compte comme lu |
+| `Filter` | slot de filtrage actif : `[NAT]` et `[Filter]`, une règle par ligne | oui ; un dossier `Filter/` de slots aussi (règles préfixées par le nom du slot) |
+| `Network` | interfaces (`[ethernetN]`, `[vlanN]` avec `Tag=`, …) | pour le VLAN des réseaux et `fwclean reseaux` |
+| `route` | `DefaultRoute=`, `[StaticRoutes]` (`[off ]DEST,IFACE->PASSERELLE`) | oui ; `[ReverseRoutes]` ignoré |
+| `global/` | objets et politique globaux poussés par SMC | reconnu, pas lu |
+
+Dans une règle, `from`, `to`, `port`, `ipproto`, `route` et, après `->`, les champs traduits citent des objets (listes en `a|b`, négation `!a`, `user=login@objet` → `objet`). Les lignes `separator`, `on IFACE` (interface), `via ipsec`, `any`, `internet`, `none`, `original`, et les objets créés par le SNS (`Firewall_*`, `Network_*`, `ephemeral_fw*`) ne sont pas des objets de l'export. Une ligne `off` est une règle désactivée : elle compte comme référence. Le NAT ne compte que comme référence.
+
+**Groupes requis pour les retraits.** Sans `objectgroup`, `servicegroup` et `router`, un membre de groupe ou une passerelle paraîtrait orphelin : les retraits sont suspendus (voir [Orphelins](#orphelins)). Même avec ces fichiers, seuls Filter, route et les groupes sont lus : un objet utilisé ailleurs (VPN IPsec ou SSL, DHCP, proxys, authentification, autres slots) paraît orphelin. Le rapport le rappelle ; vérifier l'utilisation de l'objet dans l'interface SNS avant tout retrait.
+
+**Objets globaux SMC.** Un SNS géré par SMC reçoit des objets globaux (`global_*` dans les règles, `Global_*` dans les groupes) qui ne sont pas dans les fichiers locaux. Ils sont listés dans la section Avertissements du rapport avec les autres noms cités mais non définis (routeurs, groupes d'un fichier non fourni). Ils se renomment dans SMC, pas sur le firewall.
+
+**Noms DNS.** Un objet `[Fqdn]` ou un hôte `resolve=dynamic` porte le nom DNS résolu par le SNS : il n'est jamais renommé, il est listé à revoir avec ce motif.
+
+**VLAN.** Une interface `[vlanN]` à adresse statique donne son `Tag` aux réseaux qu'elle contient. Sur un SNS de sortie Internet dont les VLAN internes sont en `dhcp` ou routés vers un autre firewall, le VLAN vient de la colonne `vlan` de `reseaux.csv` (générée depuis le FortiGate).
+
+Pas d'écriture vers le SNS pour l'instant : le plan se relit puis s'applique à la main (ou dans SMC).
+
+### Stormshield (CSV)
+
+Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Autre possibilité que les fichiers natifs : exporter deux CSV, et éventuellement les routes. CSV et fichiers natifs ne se mélangent pas dans un même audit.
 
 **Objets** — module Objets > OBJETS RÉSEAU / TEMPS, une ligne par objet, virgule, sans en-tête. Les champs vides restent entre deux virgules. C'est le format décrit dans l'annexe « Structure d'une base objets au format CSV » (SNS).
 
@@ -192,7 +244,7 @@ Ordre : 01, puis 02, puis 03, un lot à la fois, avec sauvegarde avant et test d
 
 Dans le dossier `--sortie` (défaut `out/`, ignoré par git) :
 
-- `rapport.md` — référentiel réseaux utilisé, noms non conformes (avec un commentaire pour ceux à revoir), doublons, orphelins, compteurs ;
+- `rapport.md` — référentiel réseaux utilisé, avertissements (retraits suspendus, noms cités non définis), noms non conformes (avec un commentaire pour ceux à revoir), doublons, orphelins, compteurs ;
 - `plan.json` — la proposition, et rien d'autre.
 
 Clés du plan :
@@ -202,11 +254,12 @@ Clés du plan :
 | `avertissement` | rappel que rien n'a été appliqué |
 | `constructeur` | `fortigate` ou `stormshield` |
 | `sources` | fichiers lus |
+| `avertissements` | `messages` (textes du rapport), `retraits_suspendus` (raison, ou `null`), `noms_non_definis` (noms cités mais définis nulle part dans l'export, hors objets implicites) |
 | `renommages` | `sorte`, `ancien`, `nouveau`, `references` |
 | `fusions` | `sorte`, `contenu`, `conserve`, `nouveau_nom`, `supprimes`, `references_reecrites` |
-| `retraits` | `sorte`, `nom`, `motif` (`aucune reference`) |
-| `a_revoir` | `sorte`, `nom`, `commentaire` : objets non conformes sans nom proposé (site ou zone introuvable) |
+| `retraits` | `sorte`, `nom`, `motif` (`aucune reference`) ; vide si les retraits sont suspendus |
+| `a_revoir` | `sorte`, `nom`, `commentaire` : objets non conformes sans nom proposé (site ou zone introuvable, nom DNS SNS) |
 
 `nouveau_nom` est le nom de l'objet conservé après un éventuel renommage. Il est identique à `conserve` quand le nom était déjà conforme.
 
-Les valeurs de `sorte` sont stables : `hote`, `reseau`, `plage`, `fqdn`, `groupe-adresses`, `service`, `groupe-services`, `vip`, `pool`, `calendrier`.
+Les valeurs de `sorte` sont stables : `hote`, `reseau`, `plage`, `fqdn`, `groupe-adresses`, `service`, `protocole` (objet `[Protocol]` SNS), `groupe-services`, `vip`, `pool`, `calendrier`.
