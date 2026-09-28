@@ -1,0 +1,7 @@
+# Exemple synthétique du fichier natif SNS objectgroup : une section par groupe, un membre par ligne.
+[grp_web]   # serveurs web
+srv_web
+Web_DMZ
+
+[grp_oublie]
+srv-oublie

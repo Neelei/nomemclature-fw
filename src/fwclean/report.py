@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from fwclean import __version__
-from fwclean.model import Resultat
+from fwclean.model import Inventaire, Resultat
 from fwclean.naming import LIBELLE, LIBELLE_CONSTRUCTEUR
 
 AVERTISSEMENT = (
@@ -29,6 +29,11 @@ def plan_dict(resultat: Resultat) -> dict:
         "avertissement": AVERTISSEMENT,
         "constructeur": resultat.inventaire.constructeur,
         "sources": list(resultat.inventaire.sources),
+        "avertissements": {
+            "messages": list(resultat.inventaire.avertissements),
+            "retraits_suspendus": resultat.inventaire.retraits_suspendus,
+            "noms_non_definis": list(resultat.inventaire.non_definis),
+        },
         "renommages": [
             {
                 "sorte": item.sorte,
@@ -88,12 +93,13 @@ def _markdown(resultat: Resultat) -> str:
         f"| Règles | {len(inventaire.regles)} |",
         f"| Noms non conformes | {len(resultat.non_conformes)} |",
         f"| Groupes de doublons | {len(resultat.fusions)} |",
-        f"| Orphelins | {len(resultat.retraits)} |",
+        f"| Orphelins | {'suspendus' if inventaire.retraits_suspendus else len(resultat.retraits)} |",
         f"| Objets ignorés | {len(inventaire.ignores)} |",
-        "",
-        "## Noms non conformes",
+        f"| Noms cités non définis | {len(inventaire.non_definis)} |",
         "",
     ]
+    lignes.extend(_avertissements(inventaire))
+    lignes.extend(["## Noms non conformes", ""])
     if resultat.non_conformes:
         lignes.extend(
             [
@@ -141,7 +147,9 @@ def _markdown(resultat: Resultat) -> str:
             "",
         ]
     )
-    if resultat.retraits:
+    if inventaire.retraits_suspendus:
+        lignes.append(f"Retraits suspendus : {_cell(inventaire.retraits_suspendus)}.")
+    elif resultat.retraits:
         lignes.extend(["| Sorte | Nom |", "| --- | --- |"])
         for retrait in resultat.retraits:
             lignes.append(
@@ -166,6 +174,25 @@ def _markdown(resultat: Resultat) -> str:
         ]
     )
     return "\n".join(lignes)
+
+
+def _avertissements(inventaire: Inventaire) -> list[str]:
+    if not inventaire.avertissements and not inventaire.non_definis:
+        return []
+    lignes = ["## Avertissements", ""]
+    lignes.extend(f"- {_cell(message)}" for message in inventaire.avertissements)
+    if inventaire.non_definis:
+        lignes.extend(
+            [
+                "",
+                f"Noms cités mais non définis ({len(inventaire.non_definis)}), hors objets "
+                "implicites (any, internet, Firewall_*, Network_*, ephemeral_fw*) :",
+                "",
+            ]
+        )
+        lignes.extend(f"- `{nom}`" for nom in inventaire.non_definis)
+    lignes.append("")
+    return lignes
 
 
 def _cell(valeur: str) -> str:

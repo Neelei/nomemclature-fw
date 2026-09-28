@@ -1,0 +1,14 @@
+# Exemple synthétique d'un slot de filtrage SNS (fichier Filter) : [NAT] puis [Filter].
+[NAT]
+separator color="c0c0c0" comment="NAT # sortant" collapse="0"
+nat from Res-VLAN10 to internet on out -> from Firewall_out arp port ephemeral_fw to original rulename "nat1"  # NAT sortant
+
+[Filter]
+separator color="c0c0c0" comment="Filtrage" collapse="0"
+pass inspection firewall from Res-VLAN10|double_pile to grp_web port web rulename "r1"  # LAN vers web
+off pass from poste_mac to srv_web port https_ep rulename "r2"
+pass log route passerelle_wan from Res-VLAN10 on in to internet port plage_appli rulename "r3"
+block from !Reseau_Gras to Res-DMZ port syslog|rdp rulename "r4"
+pass from user=jdupont@Plage_VPN via ipsec to srv_web ipproto gre_tunnel rulename "r5"
+pass from Network_in to updates.example.com|mirror.example.org port SVC_TCP_443_HTTPS rulename "r6"
+reset from any to global_SRV_PROXY port mail rulename "r7"  # objet global SMC et groupe non fournis

@@ -26,7 +26,10 @@ MULTI = "multi"
 RESERVES = frozenset({CTX, MULTI})
 
 # Types sans site ni zone : {PREFIXE}_{DETAIL} (services : SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}).
-SANS_LOCALISATION = frozenset({"service", "groupe-services", "calendrier"})
+SANS_LOCALISATION = frozenset({"service", "protocole", "groupe-services", "calendrier"})
+
+# Sortes nommées SVC_{PROTOCOLE}_{PORTS}_{LIBELLE} ; « protocole » : objet [Protocol] SNS (ipproto).
+SORTES_SERVICE = frozenset({"service", "protocole"})
 
 PREFIXE = {
     "hote": "HST",
@@ -35,6 +38,7 @@ PREFIXE = {
     "fqdn": "FQDN",
     "groupe-adresses": "GRP",
     "service": "SVC",
+    "protocole": "SVC",
     "groupe-services": "SGRP",
     "vip": "VIP",
     "pool": "POOL",
@@ -50,6 +54,7 @@ ESPACE = {
     "groupe-adresses": "adresse",
     "vip": "adresse",
     "service": "service",
+    "protocole": "protocole",
     "groupe-services": "service",
     "calendrier": "calendrier",
     "pool": "pool",
@@ -62,6 +67,7 @@ LIBELLE = {
     "fqdn": "fqdn",
     "groupe-adresses": "groupe d'adresses",
     "service": "service",
+    "protocole": "protocole IP",
     "groupe-services": "groupe de services",
     "vip": "vip",
     "pool": "pool",
@@ -202,7 +208,7 @@ def est_conforme_objet(
     if prefixe is None:
         return False
     parties = nom.split(SEP)
-    if sorte == "service":
+    if sorte in SORTES_SERVICE:
         return (
             signature is not None
             and len(parties) in {3, 4}

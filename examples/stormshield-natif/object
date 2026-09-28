@@ -1,0 +1,41 @@
+# Exemple synthétique du fichier natif SNS /usr/Firewall/ConfigFiles/object (aucune donnée réelle).
+# Cas couverts : réseau sous VLAN d'interface, doublons stricts, orphelin, hôte double pile,
+# hôte dynamique (nom DNS, non renommable), MAC ignorées, services any et plages, protocoles.
+[Network]
+Res-VLAN10=10.0.0.0/24      # LAN utilisateurs
+NET_SIEGE_LAN_UTILISATEURS=10.0.0.0/255.255.255.0
+Reseau_Gras=10.210.0.0/24
+Res-DMZ=10.1.1.0/24
+IANA_v6_doc=2001:db8::/32
+
+[Service]
+https_ep=443/tcp
+SVC_TCP_443_HTTPS=443/tcp
+dns_any=53/any      # TCP et UDP
+plage_appli=2000 - 2032/tcp
+syslog=514/udp
+rdp=3389/TCP
+
+[Protocol]
+gre_tunnel=47
+rdp=27      # même nom qu'un service : espace de noms distinct
+
+[Internet]
+operator=ne
+object=any
+
+[Fqdn]
+updates.example.com=203.0.113.5
+
+[Host]
+srv_web=10.1.1.10,resolve=static    # serveur web
+Web_DMZ=10.1.1.10
+srv-oublie=10.9.9.9
+passerelle_lan=10.0.0.1
+passerelle_wan=203.0.113.1,resolve=static
+double_pile=10.0.0.20,2001:db8::20
+mirror.example.org=203.0.113.50,resolve=dynamic
+poste_mac=10.0.0.30,resolve=static,mac=00:11:22:33:44:55
+mac_seule=00:11:22:33:44:66
+plage_mac=00:11:22:33:44:00-00:11:22:33:44:ff
+Plage_VPN=10.8.0.1-10.8.0.200

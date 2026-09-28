@@ -13,9 +13,10 @@ from fwclean.charger import charger
 from fwclean.model import ErreurLecture
 from fwclean.naming import lire_contextes, lire_correspondances
 from fwclean.report import ecrire
-from fwclean.reseaux import ecrire_reseaux, reseaux_connectes
+from fwclean.reseaux import ecrire_reseaux, reseaux_connectes, reseaux_sns
 from fwclean.script import generer_script
 from fwclean.sites import Referentiel, lire_reseaux
+from fwclean.stormshield_natif import genre_natif
 
 _CONTEXTES_DEFAUT = ("dmz", "lan", "wan", "vpn")
 
@@ -37,6 +38,7 @@ def executer(argv: list[str] | None = None) -> int:
             "exemples :\n"
             "  fwclean audit examples/fortigate/nomenclature.conf --sortie out/fortigate\n"
             "  fwclean audit examples/stormshield --sortie out/stormshield\n"
+            "  fwclean audit examples/stormshield-natif --sortie out/sns\n"
             "  fwclean audit inbox/pare-feu.conf --sortie out\n"
             "  fwclean audit inbox/pare-feu.conf --reseaux reseaux.exemple.csv\n"
             "  fwclean reseaux inbox/pare-feu.conf --site siege\n"
@@ -59,7 +61,10 @@ def executer(argv: list[str] | None = None) -> int:
         "chemins",
         nargs="+",
         metavar="CHEMIN",
-        help="Fichier .conf FortiGate, CSV Stormshield, ou dossier d'export",
+        help=(
+            "Fichier .conf FortiGate, CSV Stormshield, fichiers natifs SNS "
+            "(object, objectgroup, servicegroup, Filter, Network, route) ou dossier d'export"
+        ),
     )
     audit.add_argument(
         "--sortie",
@@ -73,20 +78,26 @@ def executer(argv: list[str] | None = None) -> int:
     audit.add_argument(
         "--reseaux",
         help=(
-            "Référentiel reseau;site;zone qui donne le site et la zone des objets "
+            "Référentiel reseau;site;zone[;vlan] qui donne le site, la zone et le VLAN des objets "
             "(défaut : ./reseaux.csv s'il existe, sinon site CTX)"
         ),
     )
     reseaux = sous.add_parser(
         "reseaux",
-        help="Écrire reseaux.csv depuis les interfaces d'une sauvegarde FortiGate",
+        help="Écrire reseaux.csv depuis les interfaces d'une sauvegarde FortiGate ou d'un SNS",
         description=(
-            "Lit config system interface, config system zone et les zones SD-WAN, et écrit "
-            "un réseau par interface qui porte une IP. La zone FortiGate est traduite par "
-            "les correspondances de contextes.txt (« mgmt = MGMT NETWORKS »)."
+            "FortiGate : lit config system interface, config system zone et les zones SD-WAN, "
+            "et écrit un réseau par interface qui porte une IP. SNS : lit le fichier Network "
+            "(interfaces à adresse statique). La zone (zone FortiGate ou nom d'interface SNS) "
+            "est traduite par les correspondances de contextes.txt (« mgmt = MGMT NETWORKS ») ; "
+            "la colonne vlan reprend le vlanid ou le Tag de l'interface."
         ),
     )
-    reseaux.add_argument("chemin", metavar="CONF", help="Sauvegarde FortiGate .conf")
+    reseaux.add_argument(
+        "chemin",
+        metavar="CHEMIN",
+        help="Sauvegarde FortiGate .conf, fichier Network SNS ou dossier qui le contient",
+    )
     reseaux.add_argument("--site", required=True, help="Site de ce firewall, en minuscules (ex. siege)")
     reseaux.add_argument("--sortie", default="reseaux.csv", help="Fichier écrit (défaut : ./reseaux.csv)")
     reseaux.add_argument("--ecraser", action="store_true", help="Remplacer le fichier s'il existe")
@@ -140,8 +151,10 @@ def _auditer(args: argparse.Namespace) -> int:
         f"règles : {len(resultat.inventaire.regles)}, "
         f"non conformes : {len(resultat.non_conformes)}, "
         f"doublons : {len(resultat.fusions)}, "
-        f"orphelins : {len(resultat.retraits)}."
+        f"orphelins : {'suspendus' if resultat.inventaire.retraits_suspendus else len(resultat.retraits)}."
     )
+    for message in resultat.inventaire.avertissements:
+        print(f"Avertissement : {message}")
     print("Aucune modification appliquée.")
     return 0
 
@@ -175,9 +188,15 @@ def _reseaux(args: argparse.Namespace) -> int:
         sortie = Path(args.sortie)
         if sortie.exists() and not args.ecraser:
             raise ErreurLecture(f"{sortie} existe déjà : relancer avec --ecraser pour le remplacer.")
-        source = Path(args.chemin)
-        lignes = reseaux_connectes(source.read_text(encoding="utf-8-sig"), contextes, correspondances)
-        texte = ecrire_reseaux(lignes, args.site, source.name, contextes)
+        source = _source_reseaux(Path(args.chemin))
+        contenu = source.read_text(encoding="utf-8-sig")
+        if not source.suffix and genre_natif(source.name, contenu) == "network":
+            constructeur = "stormshield"
+            lignes = reseaux_sns(contenu, contextes, correspondances)
+        else:
+            constructeur = "fortigate"
+            lignes = reseaux_connectes(contenu, contextes, correspondances)
+        texte = ecrire_reseaux(lignes, args.site, source.name, contextes, constructeur)
     except (ErreurLecture, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -187,7 +206,19 @@ def _reseaux(args: argparse.Namespace) -> int:
     print(f"Réseaux connectés : {len(lignes)}, sans zone traduite : {len(sans_zone)}.")
     for ligne in sans_zone:
         print(f"  à compléter : {ligne.reseau} ({ligne.zone_fortigate or ligne.interface})")
+    desactivees = [ligne for ligne in lignes if ligne.desactivee and ligne.zone is not None]
+    if desactivees:
+        print(f"Interfaces désactivées, laissées en commentaire : {len(desactivees)}.")
     return 0
+
+
+def _source_reseaux(chemin: Path) -> Path:
+    if not chemin.is_dir():
+        return chemin
+    for enfant in sorted(chemin.iterdir()):
+        if enfant.is_file() and enfant.name.lower() == "network":
+            return enfant
+    raise ErreurLecture(f"{chemin} : aucun fichier Network SNS dans ce dossier.")
 
 
 def _script(args: argparse.Namespace) -> int:

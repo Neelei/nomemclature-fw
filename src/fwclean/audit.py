@@ -19,6 +19,7 @@ from fwclean.naming import (
     ESPACE,
     PREFIXE,
     SANS_LOCALISATION,
+    SORTES_SERVICE,
     est_conforme_objet,
     longueur_max,
     proposer_objet,
@@ -26,7 +27,7 @@ from fwclean.naming import (
     rendre_unique,
     signature_service,
 )
-from fwclean.sites import Localisateur, Referentiel
+from fwclean.sites import Localisateur, Referentiel, appliquer_vlans
 
 _RAISONS = {
     "hote": "adresse absente de reseaux.csv",
@@ -47,6 +48,7 @@ def auditer(
     referentiel: Referentiel | None = None,
 ) -> Resultat:
     referentiel = referentiel or Referentiel()
+    inventaire = appliquer_vlans(inventaire, referentiel)
     sites = referentiel.sites
     localisateur = Localisateur(inventaire, contextes, referentiel)
     refs = _index_references(inventaire)
@@ -55,7 +57,7 @@ def auditer(
         return longueur_max(inventaire.constructeur, sorte)
 
     def conforme(objet: Objet) -> bool:
-        signature = signature_service(objet.empreinte) if objet.sorte == "service" else None
+        signature = signature_service(objet.empreinte) if objet.sorte in SORTES_SERVICE else None
         return est_conforme_objet(
             objet.nom, objet.sorte, contextes, sites, limite(objet.sorte), objet.vlan, signature
         )
@@ -88,7 +90,7 @@ def auditer(
             cites |= origines(parti)
         preparations.append((conserve, partis, cites))
 
-    orphelins = tuple(
+    orphelins = () if inventaire.retraits_suspendus else tuple(
         sorted(
             (
                 objet
@@ -116,6 +118,9 @@ def auditer(
     nouveaux: dict[tuple[str, str], str] = {}
     commentaires: dict[tuple[str, str], str] = {}
     for objet in candidats:
+        if objet.fige:
+            commentaires[(objet.sorte, objet.nom)] = objet.fige
+            continue
         if objet.sorte in SANS_LOCALISATION:
             site = zone = None
         else:
@@ -124,7 +129,7 @@ def auditer(
                 commentaires[(objet.sorte, objet.nom)] = _commentaire(objet.sorte, site, zone)
                 continue
         prises.discard(objet.nom)
-        if objet.sorte == "service":
+        if objet.sorte in SORTES_SERVICE:
             base = proposer_service(objet.nom, objet.empreinte, limite(objet.sorte))
         else:
             base = proposer_objet(
@@ -237,6 +242,7 @@ def _index_references(inventaire: Inventaire) -> dict[tuple[str, str], set[str]]
         pointer(regle.nom, "adresse", regle.sources)
         pointer(regle.nom, "adresse", regle.destinations)
         pointer(regle.nom, "service", regle.services)
+        pointer(regle.nom, "protocole", regle.protocoles)
         if regle.planification:
             pointer(regle.nom, "calendrier", (regle.planification,))
         if regle.pool:
@@ -249,6 +255,7 @@ def _index_references(inventaire: Inventaire) -> dict[tuple[str, str], set[str]]
     for lien in inventaire.liens:
         pointer(lien.origine, "adresse", lien.adresses)
         pointer(lien.origine, "service", lien.services)
+        pointer(lien.origine, "protocole", lien.protocoles)
         pointer(lien.origine, "calendrier", lien.calendriers)
         pointer(lien.origine, "pool", lien.pools)
     return refs

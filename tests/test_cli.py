@@ -45,6 +45,7 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
         "avertissement",
         "constructeur",
         "sources",
+        "avertissements",
         "renommages",
         "fusions",
         "retraits",
@@ -52,6 +53,7 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
     }
     assert "appliqu" in plan["avertissement"]
     assert plan["constructeur"] == "fortigate"
+    assert plan["avertissements"] == {"messages": [], "retraits_suspendus": None, "noms_non_definis": []}
     assert any(item["ancien"] == "web_dmz_backup" for item in plan["renommages"])
     assert any(item["nom"] == "srv-oublie" for item in plan["retraits"])
     assert "Référentiel réseaux :" in rapport and "sites : GRAS, SIEGE" in rapport

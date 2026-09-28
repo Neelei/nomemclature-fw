@@ -92,11 +92,14 @@ def test_reseaux_connectes_et_zones():
 def test_ecriture_du_referentiel():
     zones, correspondances = _contextes()
     texte = ecrire_reseaux(reseaux_connectes(CONFIG, zones, correspondances), "SIEGE", "test.conf", zones)
-    assert "10.0.0.0/24;siege;lan  # VLAN-11 (SRV-ESX), zone LAN" in texte
-    assert "# 10.0.111.0/24;siege;?" in texte and "« <zone> = PreProd FRANCE »" in texte
+    assert "reseau;site;zone;vlan" in texte
+    assert "10.0.0.0/24;siege;lan;11  # VLAN-11 (SRV-ESX), zone LAN" in texte
+    assert "192.168.1.0/24;siege;oob;  # mgmt, hors zone" in texte
+    assert "# 10.0.111.0/24;siege;?;" in texte and "« <zone> = PreProd FRANCE »" in texte
     referentiel = analyser_reseaux(texte, zones)
     assert referentiel.sites == ("siege",)
     assert len(referentiel.entrees) == 4
+    assert {str(entree.reseau): entree.vlan for entree in referentiel.entrees}["10.118.131.0/24"] == 131
 
 
 def test_commande_reseaux(tmp_path, capsys, monkeypatch):

@@ -20,6 +20,8 @@ class Objet:
     mentions_calendriers: tuple[str, ...] = ()
     mentions_pools: tuple[str, ...] = ()
     vlan: int | None = None
+    # Raison pour laquelle le nom ne doit pas changer (ex. nom DNS résolu par le SNS).
+    fige: str | None = None
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class Regle:
     sources: tuple[str, ...] = ()
     destinations: tuple[str, ...] = ()
     services: tuple[str, ...] = ()
+    protocoles: tuple[str, ...] = ()
     interfaces_source: tuple[str, ...] = ()
     interfaces_destination: tuple[str, ...] = ()
     planification: str | None = None
@@ -43,6 +46,7 @@ class Lien:
     origine: str
     adresses: tuple[str, ...] = ()
     services: tuple[str, ...] = ()
+    protocoles: tuple[str, ...] = ()
     calendriers: tuple[str, ...] = ()
     pools: tuple[str, ...] = ()
 
@@ -55,6 +59,11 @@ class Inventaire:
     regles: tuple[Regle, ...] = ()
     liens: tuple[Lien, ...] = ()
     ignores: tuple[str, ...] = ()
+    avertissements: tuple[str, ...] = ()
+    # Noms cités par les règles, routes ou groupes mais définis nulle part dans l'export.
+    non_definis: tuple[str, ...] = ()
+    # Raison pour laquelle aucun retrait d'orphelin n'est proposé (export incomplet).
+    retraits_suspendus: str | None = None
 
 
 @dataclass(frozen=True)

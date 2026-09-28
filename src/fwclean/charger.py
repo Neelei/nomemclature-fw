@@ -14,14 +14,17 @@ from fwclean.stormshield import (
     lire_regles,
     lire_routes,
 )
+from fwclean.stormshield_natif import FICHIERS as FICHIERS_NATIFS
+from fwclean.stormshield_natif import assembler_natif, genre_natif
 
 _SUFFIXES = {".conf", ".csv", ".na"}
+_NATIF = "sns:"
 
 
 def charger(chemins: list[Path]) -> Inventaire:
-    fichiers = _developper(chemins)
+    fichiers, non_lus = _developper(chemins)
     if not fichiers:
-        raise ErreurLecture("Aucun export .conf ou .csv à lire.")
+        raise ErreurLecture("Aucun export .conf, .csv ou fichier natif SNS (object, Filter…) à lire.")
 
     genres: list[str] = []
     textes: list[str] = []
@@ -30,22 +33,38 @@ def charger(chemins: list[Path]) -> Inventaire:
         if chemin.suffix.lower() == ".na":
             raise ErreurLecture(
                 f"{chemin.name} : sauvegarde Stormshield chiffrée (.na) non lue. "
-                "Exportez la base objets (Objets > OBJETS RÉSEAU / TEMPS) et les règles "
-                "de filtrage en CSV."
+                "Copiez les fichiers de /usr/Firewall/ConfigFiles (object, objectgroup, "
+                "servicegroup, Filter, Network, route…) ou exportez objets et règles en CSV."
             )
-        texte = chemin.read_text(encoding="utf-8-sig")
+        texte = _lire(chemin)
         labels.append(_afficher(chemin))
         textes.append(texte)
         genres.append(_genre(chemin, texte))
 
-    if any(genre == "fortigate" for genre in genres) and any(genre != "fortigate" for genre in genres):
-        raise ErreurLecture("Un audit porte sur un seul constructeur à la fois.")
+    familles = {_famille(genre) for genre in genres}
+    if len(familles) > 1:
+        if "fortigate" in familles:
+            raise ErreurLecture("Un audit porte sur un seul constructeur à la fois.")
+        raise ErreurLecture(
+            "CSV Stormshield et fichiers natifs SNS mélangés : auditer l'un ou l'autre."
+        )
 
     if genres[0] == "fortigate":
         inventaires = [
             lire_fortigate(texte, label) for texte, label in zip(textes, labels, strict=True)
         ]
         return _verifier(_fusionner("fortigate", inventaires))
+
+    if genres[0].startswith(_NATIF):
+        return _verifier(
+            assembler_natif(
+                [
+                    (genre.removeprefix(_NATIF), label, texte)
+                    for genre, label, texte in zip(genres, labels, textes, strict=True)
+                ],
+                non_lus,
+            )
+        )
 
     objets = []
     regles = []
@@ -74,6 +93,12 @@ def charger(chemins: list[Path]) -> Inventaire:
     if not inventaire.objets and not inventaire.regles and not inventaire.liens and not inventaire.ignores:
         raise ErreurLecture("Aucun objet, aucune règle et aucune route reconnus dans l'export.")
     return _verifier(inventaire)
+
+
+def _famille(genre: str) -> str:
+    if genre == "fortigate":
+        return "fortigate"
+    return "natif" if genre.startswith(_NATIF) else "csv"
 
 
 def _fusionner(constructeur: str, inventaires: list[Inventaire]) -> Inventaire:
@@ -111,29 +136,55 @@ def _verifier(inventaire: Inventaire) -> Inventaire:
     return inventaire
 
 
-def _developper(chemins: list[Path]) -> list[Path]:
+def _developper(chemins: list[Path]) -> tuple[list[Path], list[str]]:
+    """Fichiers à lire, et éléments SNS reconnus mais pas lus (dossier global/)."""
     fichiers: list[Path] = []
+    non_lus: list[str] = []
     for chemin in chemins:
         if not chemin.exists():
             raise ErreurLecture(f"Introuvable : {chemin}")
-        if chemin.is_dir():
-            for enfant in sorted(chemin.iterdir()):
-                if enfant.is_file() and enfant.suffix.lower() in _SUFFIXES:
-                    fichiers.append(enfant)
-        else:
+        if not chemin.is_dir():
             fichiers.append(chemin)
-    return fichiers
+            continue
+        for enfant in sorted(chemin.iterdir()):
+            nom = enfant.name.lower()
+            if enfant.is_file() and (enfant.suffix.lower() in _SUFFIXES or nom in FICHIERS_NATIFS):
+                fichiers.append(enfant)
+            elif enfant.is_dir() and nom == "filter":
+                fichiers.extend(slot for slot in sorted(enfant.iterdir()) if slot.is_file())
+            elif enfant.is_dir() and nom == "global":
+                non_lus.append(f"{_afficher(enfant)}/ (objets globaux SMC)")
+    return fichiers, non_lus
 
 
 def _genre(chemin: Path, texte: str) -> str:
     if chemin.suffix.lower() == ".conf":
         return "fortigate"
+    if not chemin.suffix:
+        natif = genre_natif(chemin.name, texte)
+        if natif is None and chemin.parent.name.lower() == "filter":
+            if not texte.strip():
+                return _NATIF + "filter"
+            raise ErreurLecture(f"{_afficher(chemin)} : slot de filtrage SNS sans section [Filter] ni [NAT].")
+        if natif is not None:
+            return _NATIF + natif
     apercu = texte.lstrip()
     if apercu.startswith("#config-version") or apercu.startswith("config "):
         return "fortigate"
     if "\nconfig firewall" in texte or "\nconfig router" in texte:
         return "fortigate"
+    natif = genre_natif(chemin.name, texte)
+    if natif is not None:
+        return _NATIF + natif
     return classer_csv(texte)
+
+
+def _lire(chemin: Path) -> str:
+    donnees = chemin.read_bytes()
+    try:
+        return donnees.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return donnees.decode("latin-1")
 
 
 def _afficher(chemin: Path) -> str:

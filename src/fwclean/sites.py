@@ -5,7 +5,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from collections.abc import Collection, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple
 
@@ -23,6 +23,7 @@ Adresse = ipaddress.IPv4Address | ipaddress.IPv6Address
 Reseau = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 ENTETE = ("reseau", "site", "zone")
+ENTETE_VLAN = (*ENTETE, "vlan")
 
 
 class Localisation(NamedTuple):
@@ -38,6 +39,7 @@ class Entree:
     reseau: Reseau
     site: str
     zone: str
+    vlan: int | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,13 @@ class Referentiel:
                 return Localisation(entree.site, entree.zone)
         return None
 
+    def vlan(self, reseau: Reseau) -> int | None:
+        """VLAN de l'entrée la plus précise qui contient le réseau (None si elle n'en a pas)."""
+        for entree in self._tries:
+            if entree.reseau.version == reseau.version and reseau.subnet_of(entree.reseau):
+                return entree.vlan
+        return None
+
     def decrire(self) -> str:
         if not self.entrees:
             return "aucun : objets à adresse IP signalés à revoir"
@@ -81,24 +90,31 @@ def lire_reseaux(chemin: Path, contextes: Sequence[str]) -> Referentiel:
 
 
 def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = None) -> Referentiel:
-    """Lit `reseau;site;zone`. Lignes vides et commentaires `#` ignorés."""
+    """Lit `reseau;site;zone` ou `reseau;site;zone;vlan` (vlan vide permis). `#` : commentaire."""
     entrees: dict[Reseau, Entree] = {}
-    entete_vue = False
+    entete: tuple[str, ...] | None = None
     for numero, brut in enumerate(texte.splitlines(), start=1):
         ligne = brut.split("#", 1)[0].strip()
         if not ligne:
             continue
         champs = [champ.strip() for champ in ligne.split(";")]
-        if not entete_vue:
-            if tuple(champ.lower() for champ in champs) != ENTETE:
+        if entete is None:
+            entete = tuple(champ.lower() for champ in champs)
+            if entete not in {ENTETE, ENTETE_VLAN}:
                 raise ErreurLecture(
-                    f"reseaux.csv : en-tête attendu « reseau;site;zone », lu « {ligne} »."
+                    "reseaux.csv : en-tête attendu « reseau;site;zone » ou "
+                    f"« reseau;site;zone;vlan », lu « {ligne} »."
                 )
-            entete_vue = True
             continue
-        if len(champs) != 3:
-            raise ErreurLecture(f"reseaux.csv ligne {numero} : trois champs attendus (reseau;site;zone).")
+        if len(champs) != len(entete) and not (entete == ENTETE_VLAN and len(champs) == 3):
+            raise ErreurLecture(
+                f"reseaux.csv ligne {numero} : {len(entete)} champs attendus ({';'.join(entete)})."
+            )
         brut_reseau, site, zone = champs[0], champs[1].lower(), champs[2].lower()
+        brut_vlan = champs[3] if len(champs) > 3 else ""
+        if brut_vlan and not (brut_vlan.isdigit() and 1 <= int(brut_vlan) <= 4094):
+            raise ErreurLecture(f"reseaux.csv ligne {numero} : VLAN invalide « {brut_vlan} » (1 à 4094).")
+        vlan = int(brut_vlan) if brut_vlan else None
         try:
             reseau = ipaddress.ip_network(brut_reseau, strict=False)
         except ValueError as exc:
@@ -110,10 +126,26 @@ def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = 
                 f"reseaux.csv ligne {numero} : zone « {champs[2]} » absente de contextes.txt."
             )
         existante = entrees.get(reseau)
-        if existante is not None and (existante.site, existante.zone) != (site, zone):
-            raise ErreurLecture(f"reseaux.csv ligne {numero} : {reseau} déjà déclaré avec un autre site ou une autre zone.")
-        entrees[reseau] = Entree(reseau=reseau, site=site, zone=zone)
+        if existante is not None and (existante.site, existante.zone, existante.vlan) != (site, zone, vlan):
+            raise ErreurLecture(
+                f"reseaux.csv ligne {numero} : {reseau} déjà déclaré avec un autre site, zone ou VLAN."
+            )
+        entrees[reseau] = Entree(reseau=reseau, site=site, zone=zone, vlan=vlan)
     return Referentiel(entrees=tuple(entrees.values()), source=source)
+
+
+def appliquer_vlans(inventaire: Inventaire, referentiel: Referentiel) -> Inventaire:
+    """Réseaux sans VLAN dans la config : VLAN de l'entrée la plus précise du référentiel."""
+    if not any(entree.vlan is not None for entree in referentiel.entrees):
+        return inventaire
+    objets = []
+    for objet in inventaire.objets:
+        if objet.sorte == "reseau" and objet.vlan is None:
+            vlans = {referentiel.vlan(reseau) for reseau in _reseaux(objet)}
+            if len(vlans) == 1 and None not in vlans:
+                objet = replace(objet, vlan=vlans.pop())
+        objets.append(objet)
+    return replace(inventaire, objets=tuple(objets))
 
 
 def commun(valeurs: Iterable[str]) -> str:
@@ -231,6 +263,11 @@ def _plages(objet: Objet) -> list[tuple[Adresse, Adresse]]:
         reseau = ipaddress.ip_network(f"{adresse}/{prefixe}", strict=False)
         plages.append((reseau.network_address, reseau.broadcast_address))
     return plages
+
+
+def _reseaux(objet: Objet) -> list[Reseau]:
+    parties = objet.empreinte if isinstance(objet.empreinte[0], tuple) else (objet.empreinte,)
+    return [ipaddress.ip_network(f"{adresse}/{prefixe}", strict=False) for _famille, adresse, prefixe in parties]
 
 
 def _plage_texte(valeur: str) -> tuple[Adresse, Adresse] | None:
