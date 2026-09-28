@@ -79,7 +79,7 @@ uv run fwclean audit examples/stormshield-natif --reseaux reseaux.exemple.csv --
 
 Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. Dans l'exemple SNS natif, la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC, groupe absent).
 
-Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup` et `servicegroup` sont lus : sans eux, un membre de groupe paraîtrait orphelin. Les objets globaux SMC et les objets routeur ne sont pas gérés : un hôte qui ne sert que de passerelle de routeur ou n'est cité que par des objets globaux peut apparaître à tort comme orphelin. Avant chaque suppression, lancer « Vérifier l'utilisation » sur l'objet dans le SNS. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés.
+Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup` et `servicegroup` sont lus : sans eux, un membre de groupe paraîtrait orphelin. Les objets globaux SMC et les objets routeur ne sont pas gérés : un hôte qui ne sert que de passerelle de routeur ou n'est cité que par des objets globaux peut apparaître à tort comme orphelin. Avant chaque suppression, lancer « Vérifier l'utilisation » sur l'objet dans le SNS. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés. Les objets natifs du SNS (base par défaut : `http`, `dns_udp`, `rfc5735_private_1`, `update1.stormshield.eu`…) ne sont ni renommés, ni supprimés, ni retirés, et ne comptent pas comme non conformes ; le rapport les liste à part (« Objets natifs SNS ignorés »). La liste est décrite dans [la méthode](docs/methode-nettoyage.md#objets-natifs-sns).
 
 ## Tests
 
@@ -93,9 +93,34 @@ uv run pytest
 uv run fwclean reseaux inbox/pare-feu.conf --site siege
 ```
 
-Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate, la zone venant de la zone FortiGate de chaque interface, traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`), et le `vlanid` dans la colonne `vlan`. Ajouter ensuite à la main les réseaux non connectés. `--ecraser` remplace un fichier existant.
+Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate, la zone venant de la zone FortiGate de chaque interface, traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`), et le `vlanid` dans la colonne `vlan`. `--ecraser` remplace un fichier existant.
 
-Sur un SNS, `uv run fwclean reseaux inbox/stormshield --site siege` lit le fichier `Network` : une ligne par interface à adresse statique, zone d'après le nom de l'interface, `vlan` = `Tag`.
+Sur un SNS, `uv run fwclean reseaux inbox/stormshield --site siege` lit le fichier `Network` : une ligne par interface à adresse statique, `vlan` = `Tag`. Le SNS n'a pas de zones : c'est le nom de l'interface qui est traduit par `contextes.txt` (`wan = FObouygues, FOFreePro, INTERCO-WAN-EP`).
+
+Pour compléter un `reseaux.csv` existant avec un second firewall, sans rien écraser :
+
+```bash
+uv run fwclean reseaux inbox/stormshield --site siege --ajouter
+```
+
+`--ajouter` ajoute seulement les réseaux absents, en fin de fichier. Il garde les lignes et commentaires existants, et signale sans le modifier un réseau déjà présent avec un autre site, une autre zone ou un autre VLAN. La commande peut être relancée : elle n'ajoute rien de plus et ne touche pas aux lignes écrites à la main.
+
+### Ajouter un site distant à la main
+
+Les réseaux non connectés au firewall audité (sites distants, pools VPN, IP publiques) s'ajoutent à la main dans `reseaux.csv`, une ligne par réseau :
+
+```text
+reseau;site;zone;vlan
+10.210.0.0/24;gras;lan;
+10.211.0.0/24;gras;dmz;211
+```
+
+- format `reseau;site;zone;vlan`, séparateur `;`, site et zone en minuscules ;
+- un nouveau site s'ajoute librement : il suffit de l'écrire (lettres et chiffres, ni `ctx` ni `multi`) ;
+- la zone doit figurer dans `contextes.txt` : sinon l'ajouter d'abord ;
+- `vlan` est facultatif : laisser le champ vide.
+
+Un exemple de site distant figure dans [`reseaux.exemple.csv`](reseaux.exemple.csv).
 
 ## Produire le script d'application
 

@@ -95,6 +95,8 @@ reseau;site;zone;vlan
 - lignes vides et commentaires `#` ignorés ;
 - un même réseau déclaré deux fois avec un site, une zone ou un VLAN différents est refusé.
 
+**Sites distants.** Les réseaux connectés viennent de `fwclean reseaux` ; les autres (sites distants, pools VPN, IP publiques) s'ajoutent à la main, une ligne `reseau;site;zone;vlan` par réseau, par exemple `10.211.0.0/24;gras;dmz;211` ou `10.210.0.0/24;gras;lan;` sans VLAN. Un nouveau site est un ajout libre : l'écrire suffit à le rendre valide dans les noms (`HST_GRAS_DMZ_…`). La zone doit déjà figurer dans `contextes.txt`. `fwclean reseaux … --ajouter` complète ensuite le fichier avec les seuls réseaux absents et se relance sans écraser ces ajouts manuels (voir [la méthode](methode-nettoyage.md#référentiel-réseaux)).
+
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le dépôt versionne seulement [`reseaux.exemple.csv`](../reseaux.exemple.csv), à copier. Sans `reseaux.csv`, l'audit tourne quand même : aucun site n'est connu, les objets d'adresse non conformes sont tous signalés à revoir.
 
 ### Déduction
@@ -174,3 +176,5 @@ Si ce nom désigne un doublon strict, le plan ne le renomme pas : il le fusionne
 Noms de règles, utilisateurs, certificats, interfaces, zones constructeur, politiques VPN et objets géographiques ou dynamiques. Ces derniers sont signalés comme ignorés, sans proposition de nom.
 
 Sur Stormshield, le nom d'un objet `[Fqdn]` ou d'un hôte `resolve=dynamic` est le nom DNS que le SNS résout : le renommer casserait la résolution. Ces objets sont listés à revoir avec ce commentaire, jamais renommés. Les objets globaux SMC (`global_*`) ne sont pas dans les fichiers locaux : ils sont seulement cités, ni audités ni renommés.
+
+Les objets natifs du SNS (base par défaut : `http`, `dns_udp`, `rfc5735_private_1`, `update1.stormshield.eu`, protocoles `[Protocol]`…) gardent leur nom Stormshield : ils ne sont pas soumis à la convention, ni renommés ni retirés, et le rapport les liste à part. Voir [la liste](methode-nettoyage.md#objets-natifs-sns).

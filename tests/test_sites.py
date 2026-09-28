@@ -1,3 +1,5 @@
+import ipaddress
+
 import pytest
 
 from fwclean.audit import auditer
@@ -33,7 +35,8 @@ def _localisateur(objets, contextes, referentiel):
 
 def test_lecture_du_referentiel(contextes, referentiel):
     assert referentiel.sites == ("gras", "siege")
-    assert len(referentiel.entrees) == 6
+    assert len(referentiel.entrees) == 7
+    assert referentiel.vlan(ipaddress.ip_network("10.211.0.0/25")) == 211
     texte = "# commentaire\nRESEAU;Site;Zone\n10.0.0.0/8;SIEGE;LAN   # casse tolérée\n"
     lu = analyser_reseaux(texte, contextes)
     assert lu.entrees[0].site == "siege" and lu.entrees[0].zone == "lan"

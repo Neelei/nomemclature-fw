@@ -41,10 +41,13 @@ Les commentaires, UUID et couleurs ne comptent pas.
 
 L'objet conservé est choisi dans cet ordre :
 
-1. celui dont le nom est déjà conforme ;
-2. sinon le plus référencé ;
-3. sinon le nom le plus court ;
-4. à égalité, le nom qui arrive en premier dans l'ordre alphabétique.
+1. sur Stormshield, un [objet natif du SNS](#objets-natifs-sns) ;
+2. sinon celui dont le nom est déjà conforme ;
+3. sinon le plus référencé ;
+4. sinon le nom le plus court ;
+5. à égalité, le nom qui arrive en premier dans l'ordre alphabétique.
+
+Un objet natif n'est jamais dans les objets fusionnés à supprimer : `rdp_admin` (`3389/tcp`) est fusionné dans le service natif `rdp`, qui garde son nom. Un doublon composé seulement d'objets natifs n'est pas proposé.
 
 Les règles ne sont pas fusionnées, même si deux règles se ressemblent. Le NAT n'est pas réécrit : seules les références d'objets qui y figurent sont comptées, pour ne pas déclarer orphelin un objet qui ne sert qu'au NAT.
 
@@ -60,6 +63,8 @@ Une référence est l'une des suivantes, qu'elle vienne d'un objet lui-même inu
 - sur Stormshield : route par défaut, routes statiques, routeur ou passerelle cité par une règle (`route`), objets traduits du NAT (`->`).
 
 Si l'export ne permet pas de voir toutes les références, **aucun retrait n'est proposé** : le rapport affiche « Orphelins : suspendus » et la raison, le plan garde `retraits` vide et l'explique dans `avertissements.retraits_suspendus`. C'est le cas sur Stormshield tant que `objectgroup` et `servicegroup` ne sont pas tous deux lus (voir [Stormshield](#stormshield-fichiers-natifs)). Les orphelins sont alors traités comme les autres objets : renommés s'ils sont non conformes.
+
+Un objet natif du SNS n'est jamais proposé au retrait, même sans référence.
 
 L'objet conservé d'une fusion n'est pas listé comme doublon à retirer. S'il n'a ensuite aucune référence, il apparaît dans les retraits : la fusion a d'abord éliminé les copies, le retrait concerne le survivant.
 
@@ -90,13 +95,34 @@ Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv), ou le générer depui
 fwclean reseaux inbox/pare-feu.conf --site siege
 ```
 
-La commande lit `config system interface` (une ligne par interface qui porte une IP), `config system zone` et les zones SD-WAN (`config system sdwan` → `members`). La zone FortiGate de l'interface, ou le nom de l'interface si elle n'est dans aucune zone, est traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`, `oob = mgmt`) ; un nom qui est déjà une zone (`LAN` → `lan`) n'a pas besoin de correspondance. Une interface sans zone traduite est écrite en commentaire, à compléter. Le fichier existant n'est remplacé qu'avec `--ecraser`. Les réseaux non connectés (sites distants, pools VPN, IP publiques) sont à ajouter à la main.
+La commande lit `config system interface` (une ligne par interface qui porte une IP), `config system zone` et les zones SD-WAN (`config system sdwan` → `members`). La zone FortiGate de l'interface, ou le nom de l'interface si elle n'est dans aucune zone, est traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`, `oob = mgmt`) ; un nom qui est déjà une zone (`LAN` → `lan`) n'a pas besoin de correspondance. Une interface sans zone traduite est écrite en commentaire, à compléter. Le fichier existant n'est remplacé qu'avec `--ecraser`.
 
-Sur un SNS, la même commande lit le fichier natif `Network` (le fichier ou le dossier qui le contient) :
+Sur un SNS, la même commande lit le fichier natif `Network` (le fichier ou le dossier qui le contient). Le SNS n'a pas de zones : c'est le nom de l'interface (`Name=`) qui est traduit par `contextes.txt` (`wan = FObouygues, FOFreePro, INTERCO-WAN-EP`, `vpn = ssl.root, VTI_FRSI_THUS`, `oob = mgmt, HA`).
+
+**Compléter sans écraser.** Avec `--ajouter`, la commande complète le `reseaux.csv` existant au lieu de le refuser :
 
 ```bash
-fwclean reseaux inbox/stormshield --site siege --sortie reseaux-sns.csv
+fwclean reseaux inbox/stormshield --site siege --ajouter
 ```
+
+- seuls les réseaux absents du fichier sont ajoutés, en fin de fichier, sous un commentaire `# Ajouté par fwclean reseaux --ajouter depuis Network :` ;
+- les lignes et commentaires existants restent tels quels, y compris les ajouts manuels ;
+- un réseau déjà présent avec le même site et la même zone est compté « déjà présent » ; un VLAN absent de l'interface ne contredit pas celui du fichier ;
+- un réseau déjà présent avec un autre site, une autre zone ou un autre VLAN est affiché « différent, non modifié » : à trancher à la main ;
+- une interface désactivée ou sans zone traduite est « écartée » et n'est pas écrite ;
+- la commande se relance sans risque : un second passage n'ajoute rien.
+
+`--ajouter` et `--ecraser` s'excluent. Sans fichier existant, `--ajouter` l'écrit comme d'habitude.
+
+**Ajouter un site distant à la main.** Les réseaux non connectés au firewall audité (sites distants, pools VPN, IP publiques) s'écrivent à la main, une ligne `reseau;site;zone;vlan` par réseau :
+
+```text
+# Site distant de Gras (hors firewall audité)
+10.210.0.0/24;gras;lan;
+10.211.0.0/24;gras;dmz;211
+```
+
+Un nouveau site est un ajout libre : il suffit de l'écrire en minuscules (lettres et chiffres, ni `ctx` ni `multi`), il devient alors un site valide pour la nomenclature. La zone, elle, doit figurer dans [`contextes.txt`](../contextes.txt) : l'y ajouter d'abord si besoin. Le `vlan` est facultatif (champ vide). Ces lignes survivent à `fwclean reseaux --ajouter`, qui ne réécrit jamais le fichier.
 
 Une ligne par adresse statique d'interface (`AddressN`/`MaskN`, `IPv6AddressN`/`IPv6MaskN`), loopback exclue ; les interfaces en `dhcp` n'apparaissent pas. La zone vient du nom de l'interface (`Name=`), traduit par `contextes.txt` (ajouter par exemple `wan = FOFreePro, FObouygues`) ; sinon la ligne est écrite en commentaire. Une interface désactivée (`State=0`) est aussi laissée en commentaire. `vlan` reprend le `Tag=` de l'interface VLAN.
 
@@ -160,6 +186,20 @@ Dans une règle, `from`, `to`, `port`, `ipproto`, `route` et, après `->`, les c
 **Vérifier l'utilisation avant chaque suppression.** Seuls Filter, route et les groupes sont lus comme références : un objet utilisé ailleurs (routeur, objet global, VPN IPsec ou SSL, DHCP, proxys, authentification, autres slots) paraît orphelin. Avant de supprimer un objet proposé en retrait, lancer « Vérifier l'utilisation » sur l'objet dans l'interface SNS (ou dans SMC). Le rapport le rappelle en tête de la liste des orphelins.
 
 **Objets globaux SMC.** Un SNS géré par SMC reçoit des objets globaux (`global_*` dans les règles, `Global_*` dans les groupes) qui ne sont pas dans les fichiers locaux. Ils sont listés dans la section Avertissements du rapport avec les autres noms cités mais non définis (routeurs, groupes d'un fichier non fourni). Ils se renomment dans SMC, pas sur le firewall.
+
+#### Objets natifs SNS
+
+Les objets de la base par défaut du SNS ne sont ni renommés, ni supprimés dans une fusion, ni proposés au retrait, et ne comptent pas comme non conformes. Le rapport les compte (« Objets natifs SNS ignorés ») et les liste dans une section à part ; le plan les reprend dans `natifs_ignores`. Un objet natif peut être l'objet conservé d'une fusion. La liste est dans [`sns_natifs.py`](../src/fwclean/sns_natifs.py), établie sur un export SNS réel (411 objets natifs sur 1 347) :
+
+| Espace | Natifs |
+| --- | --- |
+| Adresses | motifs `rfc3330_*`, `rfc5735_*`, `rfc4291_*`, `IANA_v6_*`, `*.netasq.com`, `*.stormshield.eu`, `*.stormshieldcs.eu` ; `localhost`, `members.dyndns.org`, `checkip.dyndns.org`, `dns1.google.com`, `dns2.google.com`, `dns1.dns0.eu`, `dns2.dns0.eu`, objets MAC multicast (`dcp_multicast`…) ; groupes `rfc3330`, `rfc5735`, `IANA_v6_reserved` |
+| Services | les 217 services de la base (`auth` … `vmware`, dont `http`, `https`, `dns_udp`, `ssh_udp`, `router`) et ceux ajoutés par le firmware (`ldap_udp`, `ad2003-dyn_tcp`, `agent_ad`, `modbus`, `rdp`, `quic_443`, `mqtt_tcp`…) ; groupes `full`, `mail`, `web`, `Admin_srv`, `Auth_srv`, `ActiveDirectory2003`, `ActiveDirectory2008`, `quic`, `ses_srv_*`… |
+| Protocoles | les 22 protocoles de `[Protocol]` (`egp`, `ospf`, `vrrp`, `rdp`, `icmpv6`…) |
+
+Les noms sont comparés par espace : le service `router` (`520/udp`) est natif, l'hôte `router` (`192.168.137.1`) ne l'est pas. Tout le reste est un objet d'administrateur : `EP*`, `Res-VLAN*`, `NW_*`, `Veeam_https`, `https_EP`, `ssh_ep`, `UDP_9001`, `TCP-UDP_3478`, `grp_admin`, `flux_ad`… Quelques cas douteux sont classés administrateur, donc traités normalement : `udpvpn`, `sybase`, `lpr` (placés parmi les services ajoutés à la main), `0.fr.pool.ntp.org` et `www.googleapis.com` (hôtes `resolve=dynamic`, de toute façon jamais renommés). Un firmware plus récent peut ajouter des objets natifs : les ajouter à la liste s'ils apparaissent dans les renommages.
+
+#### Noms DNS, VLAN
 
 **Noms DNS.** Un objet `[Fqdn]` ou un hôte `resolve=dynamic` porte le nom DNS résolu par le SNS : il n'est jamais renommé, il est listé à revoir avec ce motif.
 
