@@ -3,9 +3,9 @@ import json
 
 import pytest
 
+from fwclean.charger import charger
 from fwclean.cli import executer
 from fwclean.model import ErreurLecture
-from fwclean.charger import charger
 
 
 def test_aide_en_francais(capsys):
@@ -30,6 +30,8 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
             str(sortie),
             "--contextes",
             str(racine / "contextes.txt"),
+            "--reseaux",
+            str(racine / "reseaux.exemple.csv"),
         ]
     )
     assert code == 0
@@ -51,7 +53,41 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
     assert plan["constructeur"] == "fortigate"
     assert any(item["ancien"] == "web_dmz_backup" for item in plan["renommages"])
     assert any(item["nom"] == "srv-oublie" for item in plan["retraits"])
+    assert "Référentiel réseaux :" in rapport and "sites : EPFR, GRAS" in rapport
+    assert any(item["nouveau"] == "NET-GRAS-LAN-VLAN210" for item in plan["renommages"])
     assert "Aucune modification appliquée." in capsys.readouterr().out
+
+
+def test_audit_sans_reseaux_csv(racine, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    source = racine / "examples" / "fortigate" / "nomenclature.conf"
+    code = executer(["audit", str(source), "--sortie", str(tmp_path / "out")])
+    assert code == 0
+    sortie = capsys.readouterr().out
+    assert "Référentiel réseaux : aucun (sites en CTX)" in sortie
+    plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
+    assert any(item["nouveau"] == "NET-CTX-CTX-VLAN210" for item in plan["renommages"])
+
+
+def test_reseaux_csv_local_par_defaut(racine, tmp_path, capsys, monkeypatch):
+    (tmp_path / "reseaux.csv").write_text(
+        "reseau;site;zone\n10.210.0.0/16;lyon;lan\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    source = racine / "examples" / "fortigate" / "nomenclature.conf"
+    assert executer(["audit", str(source), "--sortie", str(tmp_path / "out")]) == 0
+    assert "sites : LYON" in capsys.readouterr().out
+    plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
+    assert any(item["nouveau"] == "NET-LYON-LAN-VLAN210" for item in plan["renommages"])
+
+
+def test_reseaux_introuvable(racine, tmp_path, capsys):
+    source = racine / "examples" / "fortigate" / "nomenclature.conf"
+    code = executer(
+        ["audit", str(source), "--reseaux", str(tmp_path / "absent.csv"), "--sortie", str(tmp_path)]
+    )
+    assert code == 2
+    assert "Référentiel réseaux illisible" in capsys.readouterr().err
 
 
 def test_sauvegarde_na_refusee(tmp_path, capsys):
@@ -76,3 +112,5 @@ def test_gitignore_inbox_et_out(racine):
     texte = (racine / ".gitignore").read_text(encoding="utf-8")
     assert "inbox/" in texte
     assert "out/" in texte
+    assert "reseaux.csv" in texte.splitlines()
+    assert (racine / "reseaux.exemple.csv").is_file()

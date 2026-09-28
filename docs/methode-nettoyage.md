@@ -12,6 +12,8 @@ Un objet utilisé seulement par une règle désactivée n'est pas orphelin.
 
 Le contenu (adresse, membres, ports, action, source, destination, service) reste celui de l'export. Le nom proposé suit [la nomenclature](nomenclature.md).
 
+Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Hors référentiel, la zone vient de l'ancien nom et le site vaut `CTX`. Groupes, VIP, pools et règles prennent le site et la zone communs à leurs membres, ou `MULTI`. Le détail est dans [la nomenclature](nomenclature.md#déduction).
+
 L'outil ne renomme pas un objet qui part en fusion, ni un orphelin : le retrait ou la fusion suffit. Le rapport Markdown les montre quand même dans les noms non conformes, avec le traitement prévu.
 
 Si le nom proposé est déjà pris par un objet qui existe encore au moment du renommage, un suffixe `-01`, `-02`, … est ajouté.
@@ -58,11 +60,26 @@ L'objet conservé d'une fusion n'est pas listé comme doublon à retirer. S'il n
 
 ## Hors périmètre
 
-Chevauchements de réseaux, fusion ou réordonnancement de règles, changement d'action, de NAT, d'utilisateurs ou de certificats, poussée vers l'équipement. Le premier passage sur les exports réels sert à ajuster [`contextes.txt`](../contextes.txt), pas à réécrire les règles.
+Chevauchements de réseaux, fusion ou réordonnancement de règles, changement d'action, de NAT, d'utilisateurs ou de certificats, poussée vers l'équipement. Le premier passage sur les exports réels sert à compléter `reseaux.csv` et à ajuster [`contextes.txt`](../contextes.txt), pas à réécrire les règles.
+
+Un objet dont le nom est conforme mais dont le site ou la zone ne correspond pas à son adresse n'est pas signalé : la conformité porte sur la forme du nom.
 
 ## Exports lus
 
 Les fichiers réels se déposent dans `inbox/` (ignoré par git). Les exemples du dépôt sont synthétiques.
+
+### Référentiel réseaux
+
+`reseaux.csv` à la racine (ignoré par git), ou le fichier donné par `--reseaux`. Format `reseau;site;zone`, un CIDR par ligne, site et zone en minuscules, commentaires `#` acceptés :
+
+```text
+reseau;site;zone
+10.1.0.0/16;epfr;lan
+10.1.1.0/24;epfr;dmz
+10.210.0.0/24;gras;lan
+```
+
+Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv). Un réseau invalide, une zone absente de `contextes.txt` ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et tous les sites proposés valent `CTX`.
 
 ### FortiGate
 
@@ -104,11 +121,11 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Exporter deux CSV, et �
 | `router` | ignoré |
 
 ```text
-host,HST-DMZ-WEB-01,10.1.1.10,,,,"Serveur web"
-network,NET-LAN-UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
+host,HST-EPFR-DMZ-WEB-01,10.1.1.10,,,,"Serveur web"
+network,NET-EPFR-LAN-UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
 service,SVC-TCP-443,tcp,443,,,"HTTPS"
-group,GRP-DMZ-WEB,"HST-DMZ-WEB-01",""
-time,SCH-LAN-BUREAU,08:00-18:00,monday-friday,,""
+group,GRP-EPFR-DMZ-WEB,"HST-EPFR-DMZ-WEB-01",""
+time,SCH-CTX-LAN-BUREAU,08:00-18:00,monday-friday,,""
 ```
 
 **Règles de filtrage** — CSV avec en-tête, virgule ou point-virgule. Une ligne `nat` (colonne `type` ou action `nat`) n'est pas auditée comme une règle : elle sert uniquement à connaître les objets qu'elle cite.
@@ -122,7 +139,7 @@ time,SCH-LAN-BUREAU,08:00-18:00,monday-friday,,""
 | `source` | `src` | objets source, séparés par des virgules |
 | `destination` | `dst` | objets destination |
 | `service` | `port`, `dstport` | objet service |
-| `interface_source` | `srcif`, `srcintf` | zone source si elle figure dans `contextes.txt` |
+| `interface_source` | `srcif`, `srcintf` | zone source si elle figure dans `contextes.txt` (sinon zone des objets via `reseaux.csv`) |
 | `interface_destination` | `dstif`, `dstintf` | zone destination |
 | `planification` | `schedule`, `time` | objet calendrier |
 | `source_traduite` | `pool`, `nat_src` | objet cité par le NAT |
@@ -140,7 +157,7 @@ Un dossier qui contient ces CSV marche aussi : `fwclean audit inbox/ --sortie ou
 
 Dans le dossier `--sortie` (défaut `out/`, ignoré par git) :
 
-- `rapport.md` — noms non conformes, doublons, orphelins, compteurs ;
+- `rapport.md` — référentiel réseaux utilisé, noms non conformes, doublons, orphelins, compteurs ;
 - `plan.json` — la proposition, et rien d'autre.
 
 Clés du plan :

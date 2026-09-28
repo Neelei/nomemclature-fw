@@ -1,12 +1,12 @@
-# Contextes organisationnels autorisés, un par ligne.
+# Zones autorisées, une par ligne : 3e segment des objets
+# (HST-EPFR-LAN-…), 3e et 4e segments des règles (ALLOW-EPFR-LAN-DMZ-…).
 # Clés en minuscules dans ce fichier ; matching case-insensitive.
-# Les noms d'objets et de règles produits sont en MAJUSCULES (DMZ, LAN, …).
-# Ajoutez les codes site (par, lyo, …) sans modifier l'outil.
-# « ctx » est le contexte provisoire utilisé quand aucun contexte connu
-# n'est reconnu dans le nom. Retirez-le une fois le vocabulaire réel figé.
+# Les noms produits sont en MAJUSCULES (DMZ, LAN, …).
+# Les sites ne vont pas ici : ils viennent de reseaux.csv.
+# CTX (rien trouvé) et MULTI (membres de plusieurs zones) sont réservés
+# et toujours acceptés ; inutile de les ajouter.
 
 dmz
 lan
 wan
 vpn
-ctx

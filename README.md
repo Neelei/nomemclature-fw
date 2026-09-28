@@ -39,7 +39,27 @@ uv run fwclean audit inbox/objets.csv inbox/regles.csv --sortie out
 uv run fwclean audit inbox/ --sortie out
 ```
 
-Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` pointe vers un autre fichier que `./contextes.txt` si les codes site ne sont pas encore ceux du dépôt.
+Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` pointe vers un autre fichier de zones que `./contextes.txt`, `--reseaux` vers un autre référentiel que `./reseaux.csv`.
+
+## Sites et zones
+
+Les noms prennent la forme `HST-EPFR-LAN-ZABBIXSRV` (objets) et `ALLOW-EPFR-LAN-DMZ-HTTPS` (règles). Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
+
+```text
+reseau;site;zone
+10.1.0.0/16;epfr;lan
+10.1.1.0/24;epfr;dmz
+```
+
+Le réseau le plus précis qui contient l'objet gagne. Hors référentiel, le site vaut `CTX` et la zone vient de l'ancien nom. Un groupe ou une règle dont les membres sont sur plusieurs sites prend `MULTI`.
+
+Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
+
+```bash
+cp reseaux.exemple.csv reseaux.csv
+```
+
+puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et propose `CTX` comme site. Les zones autorisées (`dmz`, `lan`, `wan`, `vpn`) sont dans `contextes.txt`.
 
 La commande affiche les compteurs et écrit :
 
@@ -51,11 +71,11 @@ Rien n'est appliqué. Le plan se relit avant toute modification sur l'équipemen
 Pour voir le comportement sans export réel :
 
 ```bash
-uv run fwclean audit examples/fortigate/nomenclature.conf --sortie out/fortigate
-uv run fwclean audit examples/stormshield --sortie out/stormshield
+uv run fwclean audit examples/fortigate/nomenclature.conf --reseaux reseaux.exemple.csv --sortie out/fortigate
+uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie out/stormshield
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST-LAN-LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin.
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST-EPFR-LAN-LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET-GRAS-LAN-VLAN210` par son réseau, et le groupe `Clients web`, qui mélange EPFR et GRAS, devient `GRP-MULTI-LAN-CLIENTS-WEB`.
 
 ## Tests
 
@@ -65,4 +85,4 @@ uv run pytest
 
 ## Premier passage sur un export réel
 
-Ajuster la liste `dmz`, `lan`, `wan`, `vpn` et les codes site dans `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms proposés sont en majuscules (`HST-DMZ-WEB-01`). Ce passage ne sert pas à réécrire les règles.
+Remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les noms en `CTX` restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST-EPFR-DMZ-WEB-01`). Ce passage ne sert pas à réécrire les règles.

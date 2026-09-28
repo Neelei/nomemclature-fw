@@ -96,3 +96,4 @@ class Resultat:
     renommages: tuple[Renommage, ...]
     fusions: tuple[Fusion, ...]
     retraits: tuple[Retrait, ...]
+    referentiel: str = "aucun (sites en CTX)"

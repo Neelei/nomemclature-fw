@@ -1,15 +1,21 @@
-"""Convention de nommage et liste de contextes."""
+"""Convention de nommage et liste des zones (contextes.txt)."""
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from fwclean.model import ErreurLecture
 
 LONGUEUR_MAX = 79
+
+# Valeurs réservées, valables comme site et comme zone :
+# CTX = rien trouvé, MULTI = plusieurs sites ou zones parmi les membres.
+CTX = "ctx"
+MULTI = "multi"
+RESERVES = frozenset({CTX, MULTI})
 
 PREFIXE = {
     "hote": "HST",
@@ -67,7 +73,10 @@ def lire_contextes(chemin: Path) -> tuple[str, ...]:
 
 
 def analyser_contextes(texte: str) -> tuple[str, ...]:
-    """Lit les contextes : clés stockées en minuscules, matching ensuite case-insensitive."""
+    """Lit les zones : clés stockées en minuscules, matching ensuite case-insensitive.
+
+    CTX et MULTI sont toujours valables ; s'ils figurent dans le fichier, ils sont ignorés.
+    """
     vus: list[str] = []
     for brut in texte.splitlines():
         ligne = brut.split("#", 1)[0].strip().lower()
@@ -75,22 +84,21 @@ def analyser_contextes(texte: str) -> tuple[str, ...]:
             continue
         if not re.fullmatch(r"[a-z0-9]+", ligne):
             raise ErreurLecture(f"Contexte invalide : {ligne}")
-        if ligne not in vus:
+        if ligne not in vus and ligne not in RESERVES:
             vus.append(ligne)
     if not vus:
         raise ErreurLecture("La liste de contextes est vide.")
     return tuple(vus)
 
 
-def contexte_connu(jeton: str, contextes: Sequence[str]) -> bool:
-    return jeton.lower() in {contexte.lower() for contexte in contextes}
+def zone_connue(jeton: str, contextes: Sequence[str]) -> bool:
+    cle = jeton.lower()
+    return cle in RESERVES or cle in {contexte.lower() for contexte in contextes}
 
 
-def contexte_provisoire(contextes: Sequence[str]) -> str:
-    for contexte in contextes:
-        if contexte.lower() == "ctx":
-            return contexte.lower()
-    return list(contextes)[0].lower()
+def site_connu(jeton: str, sites: Collection[str]) -> bool:
+    cle = jeton.lower()
+    return cle in RESERVES or cle in {site.lower() for site in sites}
 
 
 def normaliser_chaine(valeur: str) -> str:
@@ -125,7 +133,9 @@ def rendre_unique(base: str, reserves: set[str]) -> str:
     raise ErreurLecture(f"Impossible de proposer un nom unique à partir de {base}.")
 
 
-def est_conforme_objet(nom: str, sorte: str, contextes: Sequence[str]) -> bool:
+def est_conforme_objet(
+    nom: str, sorte: str, contextes: Sequence[str], sites: Collection[str] = ()
+) -> bool:
     if not forme_valide(nom):
         return False
     parties = nom.split("-")
@@ -134,20 +144,29 @@ def est_conforme_objet(nom: str, sorte: str, contextes: Sequence[str]) -> bool:
     prefixe = PREFIXE.get(sorte)
     if prefixe is None:
         return False
-    return len(parties) >= 3 and parties[0] == prefixe and contexte_connu(parties[1], contextes)
+    return (
+        len(parties) >= 4
+        and parties[0] == prefixe
+        and site_connu(parties[1], sites)
+        and zone_connue(parties[2], contextes)
+    )
 
 
-def est_conforme_regle(nom: str, action: str, contextes: Sequence[str]) -> bool:
+def est_conforme_regle(
+    nom: str, action: str, contextes: Sequence[str], sites: Collection[str] = ()
+) -> bool:
     if not forme_valide(nom):
         return False
     parties = nom.split("-")
-    if len(parties) < 4 or parties[0] not in {"ALLOW", "DENY"}:
+    if len(parties) < 5 or parties[0] not in {"ALLOW", "DENY"}:
         return False
     if parties[0] != action.upper():
         return False
-    if not contexte_connu(parties[1], contextes) or not contexte_connu(parties[2], contextes):
+    if not site_connu(parties[1], sites):
         return False
-    reste = parties[3:]
+    if not zone_connue(parties[2], contextes) or not zone_connue(parties[3], contextes):
+        return False
+    reste = parties[4:]
     if re.fullmatch(r"\d{2}", reste[-1]) and not (len(reste) >= 2 and reste[-2] in PROTOCOLES):
         if len(reste) == 1:
             return False
@@ -155,22 +174,34 @@ def est_conforme_regle(nom: str, action: str, contextes: Sequence[str]) -> bool:
     return len(reste) >= 1
 
 
-def proposer_depuis_nom(nom: str, prefixe: str, contextes: Sequence[str]) -> str:
+def proposer_objet(
+    nom: str,
+    prefixe: str,
+    site: str,
+    zone: str,
+    contextes: Sequence[str],
+    sites: Collection[str] = (),
+) -> str:
+    """Retire de l'ancien nom le préfixe, un jeton site et un jeton zone ; le reste fait le détail."""
     jetons = [jeton for jeton in normaliser_chaine(nom).split("-") if jeton]
+    site_vu = zone_vue = False
     if jetons and jetons[0] == prefixe.lower():
         jetons = jetons[1:]
-    contexte = None
+        # Nom déjà en {PREFIXE}-{SITE}-{ZONE}-… : le 2e segment est l'ancien site, même inconnu.
+        if len(jetons) >= 3 and zone_connue(jetons[1], contextes):
+            jetons = jetons[2:]
+            site_vu = zone_vue = True
     detail: list[str] = []
     for jeton in jetons:
-        if contexte is None and contexte_connu(jeton, contextes):
-            contexte = jeton
-        else:
+        if not site_vu and jeton in {site.lower() for site in sites}:
+            site_vu = True
+        elif not zone_vue and zone_connue(jeton, contextes):
+            zone_vue = True
+        elif jeton not in RESERVES:
             detail.append(jeton)
-    if contexte is None:
-        contexte = contexte_provisoire(contextes)
     if not detail:
         detail = ["nd"]
-    return tronquer("-".join([prefixe, contexte, *detail])).upper()
+    return tronquer("-".join([prefixe, site, zone, *detail])).upper()
 
 
 _ICMP = {8: "echo", 0: "reply"}
@@ -205,52 +236,21 @@ def jeton_service(noms: Sequence[str]) -> str:
     if len(noms) != 1:
         return "multi"
     normalise = normaliser_chaine(noms[0])
-    for prefixe in ("svc-", "sgrp-"):
-        if normalise.startswith(prefixe):
-            normalise = normalise[len(prefixe) :]
-            break
+    if normalise.startswith("svc-"):
+        normalise = normalise[len("svc-") :]
+    elif normalise.startswith("sgrp-"):
+        jetons = normalise[len("sgrp-") :].split("-")
+        # SGRP-{SITE}-{ZONE}-{DETAIL} : seul le détail décrit le service.
+        normalise = "-".join(jetons[2:] if len(jetons) >= 3 else jetons)
     return normalise or "service"
-
-
-def zone_depuis(
-    interfaces: Sequence[str],
-    noms_objets: Sequence[str],
-    contextes: Sequence[str],
-) -> str:
-    reconnus: list[str] = []
-    for interface in interfaces:
-        jeton = normaliser_chaine(interface)
-        if not contexte_connu(jeton, contextes):
-            reconnus = []
-            break
-        reconnus.append(jeton)
-    else:
-        if reconnus:
-            uniques = list(dict.fromkeys(reconnus))
-            if len(uniques) == 1:
-                return uniques[0]
-    trouves: list[str] = []
-    for nom in noms_objets:
-        for partie in normaliser_chaine(nom).split("-"):
-            if contexte_connu(partie, contextes) and partie != "ctx":
-                trouves.append(partie)
-                break
-    uniques_objets = list(dict.fromkeys(trouves))
-    if len(uniques_objets) == 1:
-        return uniques_objets[0]
-    return contexte_provisoire(contextes)
 
 
 def proposer_regle(
     action: str,
-    interfaces_source: Sequence[str],
-    interfaces_destination: Sequence[str],
-    sources: Sequence[str],
-    destinations: Sequence[str],
+    site: str,
+    zone_source: str,
+    zone_destination: str,
     services: Sequence[str],
-    contextes: Sequence[str],
 ) -> str:
-    source = zone_depuis(interfaces_source, sources, contextes)
-    destination = zone_depuis(interfaces_destination, destinations, contextes)
     service = jeton_service(services)
-    return tronquer(f"{action}-{source}-{destination}-{service}").upper()
+    return tronquer(f"{action}-{site}-{zone_source}-{zone_destination}-{service}").upper()

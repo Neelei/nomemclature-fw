@@ -69,6 +69,7 @@ def _markdown(resultat: Resultat) -> str:
         "",
         f"Constructeur : {constructeur}",
         f"Sources : {sources}",
+        f"Référentiel réseaux : {_cell(resultat.referentiel)}",
         "",
         AVERTISSEMENT,
         "",

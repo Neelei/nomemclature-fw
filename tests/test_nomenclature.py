@@ -2,73 +2,76 @@ from fwclean.contenu import empreinte_service
 from fwclean.naming import (
     est_conforme_objet,
     est_conforme_regle,
+    jeton_service,
     lire_contextes,
-    proposer_depuis_nom,
+    proposer_objet,
     proposer_regle,
     proposer_service,
 )
 
+SITES = ("epfr", "gras")
+
 
 def test_contextes_par_defaut(racine):
-    contextes = lire_contextes(racine / "contextes.txt")
-    assert contextes == ("dmz", "lan", "wan", "vpn", "ctx")
+    assert lire_contextes(racine / "contextes.txt") == ("dmz", "lan", "wan", "vpn")
 
 
-def test_objets_conformes_et_plafond(racine):
-    contextes = lire_contextes(racine / "contextes.txt")
-    assert est_conforme_objet("HST-DMZ-WEB-01", "hote", contextes)
-    assert est_conforme_objet("NET-LAN-UTILISATEURS", "reseau", contextes)
-    assert est_conforme_objet("SVC-TCP-443", "service", contextes)
+def test_ctx_et_multi_ignores_dans_contextes(tmp_path):
+    fichier = tmp_path / "contextes.txt"
+    fichier.write_text("lan\nctx\nMULTI\n", encoding="utf-8")
+    assert lire_contextes(fichier) == ("lan",)
+
+
+def test_objets_conformes_et_plafond(contextes):
+    assert est_conforme_objet("HST-EPFR-LAN-ZABBIXSRV", "hote", contextes, SITES)
+    assert est_conforme_objet("NET-GRAS-LAN-VLAN210", "reseau", contextes, SITES)
+    assert est_conforme_objet("GRP-MULTI-LAN-CLIENTS", "groupe-adresses", contextes, SITES)
+    assert est_conforme_objet("FQDN-CTX-WAN-UPDATES", "fqdn", contextes, SITES)
+    assert est_conforme_objet("HST-EPFR-MULTI-X", "hote", contextes, SITES)
+    assert est_conforme_objet("SVC-TCP-443", "service", contextes, SITES)
     assert est_conforme_objet("SVC-UDP-53", "service", contextes)
-    assert est_conforme_objet("GRP-DMZ-WEB", "groupe-adresses", contextes)
-    assert not est_conforme_objet("Web_DMZ", "hote", contextes)
-    assert not est_conforme_objet("hst-dmz-web-01", "hote", contextes)
-    assert not est_conforme_objet("HST-DMZ", "hote", contextes)
-    assert not est_conforme_objet("NET-DMZ-WEB", "hote", contextes)
-    assert not est_conforme_objet("SVC-DMZ-HTTPS", "service", contextes)
-    nom = "HST-DMZ-" + ("A" * 71)
+    assert not est_conforme_objet("HST-DMZ-WEB-01", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST-LYON-LAN-WEB", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST-EPFR-USINE-WEB", "hote", contextes, SITES)
+    assert not est_conforme_objet("HST-EPFR-LAN", "hote", contextes, SITES)
+    assert not est_conforme_objet("hst-epfr-lan-web", "hote", contextes, SITES)
+    assert not est_conforme_objet("NET-EPFR-LAN-WEB", "hote", contextes, SITES)
+    assert not est_conforme_objet("SVC-EPFR-LAN-HTTPS", "service", contextes, SITES)
+    assert est_conforme_objet("HST-EPFR-LAN-X", "hote", contextes, ("EPFR",))
+    nom = "HST-EPFR-DMZ-" + ("A" * 66)
     assert len(nom) == 79
-    assert est_conforme_objet(nom, "hote", contextes)
-    assert not est_conforme_objet(nom + "B", "hote", contextes)
+    assert est_conforme_objet(nom, "hote", contextes, SITES)
+    assert not est_conforme_objet(nom + "B", "hote", contextes, SITES)
 
 
-def test_regles_suffixe_et_port(racine):
-    contextes = lire_contextes(racine / "contextes.txt")
-    assert est_conforme_regle("ALLOW-LAN-DMZ-HTTPS", "allow", contextes)
-    assert est_conforme_regle("ALLOW-LAN-DMZ-HTTPS-01", "allow", contextes)
-    assert est_conforme_regle("ALLOW-LAN-DMZ-TCP-80", "allow", contextes)
-    assert est_conforme_regle("ALLOW-LAN-DMZ-TCP-443", "allow", contextes)
-    assert not est_conforme_regle("ALLOW-LAN-DMZ-01", "allow", contextes)
-    assert not est_conforme_regle("DENY-LAN-DMZ-HTTPS", "allow", contextes)
-    assert not est_conforme_regle("allow-lan-dmz-https", "allow", contextes)
-    assert not est_conforme_regle("Acces web", "allow", contextes)
+def test_site_inconnu_sans_referentiel(contextes):
+    assert not est_conforme_objet("HST-EPFR-LAN-ZABBIXSRV", "hote", contextes)
+    assert est_conforme_objet("HST-CTX-LAN-ZABBIXSRV", "hote", contextes)
 
 
-def test_proposition_de_noms(racine):
-    contextes = lire_contextes(racine / "contextes.txt")
-    assert proposer_depuis_nom("Web_DMZ", "HST", contextes) == "HST-DMZ-WEB"
-    assert proposer_depuis_nom("Hôte_DMZ", "HST", contextes) == "HST-DMZ-HOTE"
-    assert proposer_depuis_nom("srv-oublie", "HST", contextes) == "HST-CTX-SRV-OUBLIE"
+def test_regles_suffixe_et_port(contextes):
+    assert est_conforme_regle("ALLOW-EPFR-LAN-DMZ-HTTPS", "allow", contextes, SITES)
+    assert est_conforme_regle("ALLOW-EPFR-LAN-DMZ-HTTPS-01", "allow", contextes, SITES)
+    assert est_conforme_regle("ALLOW-EPFR-LAN-DMZ-TCP-80", "allow", contextes, SITES)
+    assert est_conforme_regle("DENY-MULTI-WAN-LAN-ANY", "deny", contextes, SITES)
+    assert not est_conforme_regle("ALLOW-EPFR-LAN-DMZ-01", "allow", contextes, SITES)
+    assert not est_conforme_regle("ALLOW-LAN-DMZ-HTTPS", "allow", contextes, SITES)
+    assert not est_conforme_regle("ALLOW-LYON-LAN-DMZ-HTTPS", "allow", contextes, SITES)
+    assert not est_conforme_regle("DENY-EPFR-LAN-DMZ-HTTPS", "allow", contextes, SITES)
+    assert not est_conforme_regle("allow-epfr-lan-dmz-https", "allow", contextes, SITES)
+    assert not est_conforme_regle("Acces web", "allow", contextes, SITES)
+
+
+def test_proposition_de_noms(contextes):
+    assert proposer_objet("Web_DMZ", "HST", "epfr", "dmz", contextes, SITES) == "HST-EPFR-DMZ-WEB"
+    assert proposer_objet("Hôte_DMZ", "HST", "ctx", "dmz", contextes, SITES) == "HST-CTX-DMZ-HOTE"
+    assert proposer_objet("srv-oublie", "HST", "ctx", "ctx", contextes, SITES) == "HST-CTX-CTX-SRV-OUBLIE"
+    assert proposer_objet("EPFR_zabbix", "HST", "epfr", "lan", contextes, SITES) == "HST-EPFR-LAN-ZABBIX"
+    assert proposer_objet("HST-DMZ-WEB-01", "HST", "epfr", "dmz", contextes, SITES) == "HST-EPFR-DMZ-WEB-01"
+    assert proposer_objet("HST-EPFR-DMZ-WEB-01", "HST", "ctx", "dmz", contextes) == "HST-CTX-DMZ-WEB-01"
     empreinte = empreinte_service([("tcp", ((443, 443, -1, -1),))])
     assert proposer_service(empreinte) == "SVC-TCP-443"
-    assert (
-        proposer_regle(
-            "allow",
-            ("lan",),
-            ("dmz",),
-            ("NET-LAN-UTILISATEURS",),
-            ("web_dmz_backup",),
-            ("SVC-TCP-443",),
-            contextes,
-        )
-        == "ALLOW-LAN-DMZ-TCP-443"
-    )
-
-
-def test_code_site_sans_changer_l_outil(tmp_path):
-    fichier = tmp_path / "contextes.txt"
-    fichier.write_text("par\nlyo\n", encoding="utf-8")
-    contextes = lire_contextes(fichier)
-    assert est_conforme_objet("HST-PAR-WEB-01", "hote", contextes)
-    assert est_conforme_regle("ALLOW-PAR-LYO-HTTPS", "allow", contextes)
-    assert not est_conforme_objet("HST-DMZ-WEB-01", "hote", contextes)
+    assert proposer_regle("allow", "epfr", "lan", "dmz", ("SVC-TCP-443",)) == "ALLOW-EPFR-LAN-DMZ-TCP-443"
+    assert jeton_service(("SGRP-CTX-DMZ-WEB",)) == "web"
+    assert jeton_service(("SGRP-DMZ-WEB",)) == "dmz-web"
+    assert jeton_service(("SVC-TCP-443", "SVC-UDP-53")) == "multi"

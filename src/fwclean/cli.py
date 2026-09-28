@@ -12,8 +12,9 @@ from fwclean.charger import charger
 from fwclean.model import ErreurLecture
 from fwclean.naming import lire_contextes
 from fwclean.report import ecrire
+from fwclean.sites import Referentiel, lire_reseaux
 
-_CONTEXTES_DEFAUT = ("dmz", "lan", "wan", "vpn", "ctx")
+_CONTEXTES_DEFAUT = ("dmz", "lan", "wan", "vpn")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -33,7 +34,8 @@ def executer(argv: list[str] | None = None) -> int:
             "exemples :\n"
             "  fwclean audit examples/fortigate/nomenclature.conf --sortie out/fortigate\n"
             "  fwclean audit examples/stormshield --sortie out/stormshield\n"
-            "  fwclean audit inbox/pare-feu.conf --sortie out"
+            "  fwclean audit inbox/pare-feu.conf --sortie out\n"
+            "  fwclean audit inbox/pare-feu.conf --reseaux reseaux.exemple.csv"
         ),
     )
     analyseur.add_argument("--version", action="version", version=f"fwclean {__version__}")
@@ -61,7 +63,14 @@ def executer(argv: list[str] | None = None) -> int:
     )
     audit.add_argument(
         "--contextes",
-        help="Fichier de contextes autorisés, un par ligne (défaut : ./contextes.txt)",
+        help="Fichier des zones autorisées, une par ligne (défaut : ./contextes.txt)",
+    )
+    audit.add_argument(
+        "--reseaux",
+        help=(
+            "Référentiel reseau;site;zone qui donne le site et la zone des objets "
+            "(défaut : ./reseaux.csv s'il existe, sinon site CTX)"
+        ),
     )
     args = analyseur.parse_args(argv)
     if args.commande == "audit":
@@ -73,12 +82,14 @@ def executer(argv: list[str] | None = None) -> int:
 def _auditer(args: argparse.Namespace) -> int:
     try:
         contextes = _resoudre_contextes(args.contextes)
+        referentiel = _resoudre_reseaux(args.reseaux, contextes)
         inventaire = charger([Path(chemin) for chemin in args.chemins])
-        resultat = auditer(inventaire, contextes)
+        resultat = auditer(inventaire, contextes, referentiel)
         rapport, plan = ecrire(resultat, Path(args.sortie))
     except ErreurLecture as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    print(f"Référentiel réseaux : {resultat.referentiel}")
     print(f"Rapport : {rapport}")
     print(f"Plan : {plan}")
     print(
@@ -99,3 +110,12 @@ def _resoudre_contextes(chemin: str | None) -> tuple[str, ...]:
     if local.is_file():
         return lire_contextes(local)
     return _CONTEXTES_DEFAUT
+
+
+def _resoudre_reseaux(chemin: str | None, contextes: tuple[str, ...]) -> Referentiel:
+    if chemin:
+        return lire_reseaux(Path(chemin), contextes)
+    local = Path.cwd() / "reseaux.csv"
+    if local.is_file():
+        return lire_reseaux(local, contextes)
+    return Referentiel()

@@ -1,0 +1,13 @@
+# Référentiel réseaux d'exemple (adresses synthétiques).
+# Copier en reseaux.csv et remplacer par le plan d'adressage réel :
+# reseaux.csv est ignoré par git.
+# Une ligne par réseau CIDR ; site et zone en minuscules.
+# La zone doit figurer dans contextes.txt. Le réseau le plus précis gagne :
+# 10.1.1.10 est en DMZ, 10.1.2.10 en LAN.
+reseau;site;zone
+10.0.0.0/24;epfr;lan
+10.1.0.0/16;epfr;lan
+10.1.1.0/24;epfr;dmz
+10.8.0.0/24;epfr;vpn
+203.0.113.0/24;epfr;wan
+10.210.0.0/24;gras;lan

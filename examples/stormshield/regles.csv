@@ -1,11 +1,12 @@
 # Export synthétique des règles de filtrage Stormshield.
 # Les lignes nat ne sont pas des règles de filtrage : elles comptent seulement comme références.
-# Noms conformes en MAJUSCULES (convention nomenclature).
+# Noms conformes en MAJUSCULES : {ALLOW|DENY}-{SITE}-{ZONE_SRC}-{ZONE_DST}-{SERVICE}.
 nom,etat,action,type,source,destination,service,interface_source,interface_destination,planification,source_traduite,destination_traduite
-ALLOW-LAN-DMZ-HTTPS,on,pass,filter,NET-LAN-UTILISATEURS,GRP-DMZ-WEB,SGRP-DMZ-WEB,lan,dmz,SCH-LAN-BUREAU,,
-Acces web,on,pass,filter,NET-LAN-UTILISATEURS,web_dmz_backup,SVC-TCP-443,lan,dmz,SCH-LAN-BUREAU,,
-ALLOW-LAN-DMZ-LEGACY,off,pass,filter,HST-LAN-LEGACY,HST-DMZ-WEB-01,SVC-TCP-443,lan,dmz,,,
-ALLOW-VPN-LAN-HTTPS,on,pass,filter,RNG-VPN-CLIENTS,NET-LAN-UTILISATEURS,SVC-TCP-443,vpn,lan,,,
-ALLOW-WAN-DMZ-HTTPS,on,pass,filter,any,HST-WAN-VIP,SVC-TCP-443,wan,dmz,,,
-ALLOW-LAN-DMZ-DOUBLON,on,pass,filter,LAN_Utilisateurs,"Web_DMZ,Groupe_Web",HTTPS_custom,lan,dmz,Bureau,,
-nat-sortant,on,nat,nat,NET-LAN-UTILISATEURS,HST-WAN-VIP,SVC-TCP-443,lan,wan,,RNG-WAN-NAT,HST-WAN-VIP
+ALLOW-EPFR-LAN-DMZ-HTTPS,on,pass,filter,NET-EPFR-LAN-UTILISATEURS,GRP-EPFR-DMZ-WEB,SGRP-CTX-DMZ-WEB,lan,dmz,SCH-CTX-LAN-BUREAU,,
+Acces web,on,pass,filter,NET-EPFR-LAN-UTILISATEURS,web_dmz_backup,SVC-TCP-443,lan,dmz,SCH-CTX-LAN-BUREAU,,
+ALLOW-EPFR-LAN-DMZ-LEGACY,off,pass,filter,HST-EPFR-LAN-LEGACY,HST-EPFR-DMZ-WEB-01,SVC-TCP-443,lan,dmz,,,
+ALLOW-EPFR-VPN-LAN-HTTPS,on,pass,filter,RNG-EPFR-VPN-CLIENTS,NET-EPFR-LAN-UTILISATEURS,SVC-TCP-443,vpn,lan,,,
+ALLOW-EPFR-WAN-DMZ-HTTPS,on,pass,filter,any,HST-EPFR-WAN-VIP,SVC-TCP-443,wan,dmz,,,
+ALLOW-EPFR-LAN-DMZ-DOUBLON,on,pass,filter,LAN_Utilisateurs,"Web_DMZ,Groupe_Web",HTTPS_custom,lan,dmz,Bureau,,
+Clients vers web,on,pass,filter,Clients_web,HST-EPFR-DMZ-WEB-01,SVC-TCP-443,in3,dmz,SCH-CTX-LAN-BUREAU,,
+nat-sortant,on,nat,nat,NET-EPFR-LAN-UTILISATEURS,HST-EPFR-WAN-VIP,SVC-TCP-443,lan,wan,,RNG-EPFR-WAN-NAT,HST-EPFR-WAN-VIP

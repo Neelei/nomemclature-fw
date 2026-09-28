@@ -20,20 +20,28 @@ from fwclean.naming import (
     PREFIXE,
     est_conforme_objet,
     est_conforme_regle,
-    proposer_depuis_nom,
+    proposer_objet,
     proposer_regle,
     proposer_service,
     rendre_unique,
 )
+from fwclean.sites import Localisateur, Referentiel
 
 MOTIF_ORPHELIN = "aucune reference"
 
 
-def auditer(inventaire: Inventaire, contextes: Sequence[str]) -> Resultat:
+def auditer(
+    inventaire: Inventaire,
+    contextes: Sequence[str],
+    referentiel: Referentiel | None = None,
+) -> Resultat:
+    referentiel = referentiel or Referentiel()
+    sites = referentiel.sites
+    localisateur = Localisateur(inventaire, contextes, referentiel)
     refs = _index_references(inventaire)
 
     def conforme(objet: Objet) -> bool:
-        return est_conforme_objet(objet.nom, objet.sorte, contextes)
+        return est_conforme_objet(objet.nom, objet.sorte, contextes, sites)
 
     def origines(objet: Objet) -> set[str]:
         return refs.get((objet.sorte, objet.nom), set())
@@ -82,7 +90,7 @@ def auditer(inventaire: Inventaire, contextes: Sequence[str]) -> Resultat:
             continue
         candidats.append(("objet", objet))
     for regle in inventaire.regles:
-        if not est_conforme_regle(regle.nom, regle.action, contextes):
+        if not est_conforme_regle(regle.nom, regle.action, contextes, sites):
             candidats.append(("regle", regle))
     candidats.sort(key=lambda item: (_sorte_item(item), _nom_item(item)))
 
@@ -96,20 +104,14 @@ def auditer(inventaire: Inventaire, contextes: Sequence[str]) -> Resultat:
             if item.sorte == "service":
                 base = proposer_service(item.empreinte)
             else:
-                base = proposer_depuis_nom(item.nom, PREFIXE[item.sorte], contextes)
+                site, zone = localisateur.objet(item)
+                base = proposer_objet(item.nom, PREFIXE[item.sorte], site, zone, contextes, sites)
             references = tuple(sorted(origines(item)))
             sorte = item.sorte
         else:
             assert isinstance(item, Regle)
-            base = proposer_regle(
-                item.action,
-                item.interfaces_source,
-                item.interfaces_destination,
-                item.sources,
-                item.destinations,
-                item.services,
-                contextes,
-            )
+            site, zone_source, zone_destination = localisateur.regle(item)
+            base = proposer_regle(item.action, site, zone_source, zone_destination, item.services)
             references = ()
             sorte = "regle"
         nouveau = rendre_unique(base, prises)
@@ -143,6 +145,7 @@ def auditer(inventaire: Inventaire, contextes: Sequence[str]) -> Resultat:
     non_conformes = _non_conformes(
         inventaire,
         contextes,
+        sites,
         supprimes,
         orphelin_ids,
         {renommage.ancien: renommage for renommage in renommages},
@@ -153,19 +156,21 @@ def auditer(inventaire: Inventaire, contextes: Sequence[str]) -> Resultat:
         renommages=tuple(renommages),
         fusions=fusions,
         retraits=retraits,
+        referentiel=referentiel.decrire(),
     )
 
 
 def _non_conformes(
     inventaire: Inventaire,
     contextes: Sequence[str],
+    sites: Sequence[str],
     supprimes: dict[tuple[str, str], Objet],
     orphelin_ids: set[tuple[str, str]],
     renommages: dict[str, Renommage],
 ) -> tuple[NonConforme, ...]:
     trouves: list[NonConforme] = []
     for objet in inventaire.objets:
-        if est_conforme_objet(objet.nom, objet.sorte, contextes):
+        if est_conforme_objet(objet.nom, objet.sorte, contextes, sites):
             continue
         cle = (objet.sorte, objet.nom)
         renommage = renommages.get(objet.nom)
@@ -181,7 +186,7 @@ def _non_conformes(
             NonConforme(sorte=objet.sorte, nom=objet.nom, traitement=traitement, nom_propose=propose)
         )
     for regle in inventaire.regles:
-        if est_conforme_regle(regle.nom, regle.action, contextes):
+        if est_conforme_regle(regle.nom, regle.action, contextes, sites):
             continue
         renommage = renommages.get(regle.nom)
         if renommage is not None and renommage.sorte == "regle":
