@@ -264,10 +264,10 @@ Un dossier qui contient ces CSV marche aussi : `fwclean audit inbox/ --sortie ou
 `fwclean` ne se connecte pas au firewall. Il écrit le script CLI qui applique le plan relu :
 
 ```bash
-fwclean script inbox/pare-feu.conf --plan out/plan.json --sortie out/script
+fwclean script inbox/pare-feu.conf --plan out/plan.json --sortie out/fortigate
 ```
 
-Le plan peut être modifié avant (retirer une ligne suffit à l'exclure). La commande relit la sauvegarde pour trouver les références, et écrit dans `out/script/` :
+Le plan peut être modifié avant (retirer une ligne suffit à l'exclure). La commande relit la sauvegarde pour trouver les références, et écrit dans `out/fortigate/` :
 
 | Fichier | Contenu |
 | --- | --- |

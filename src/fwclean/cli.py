@@ -124,7 +124,7 @@ def executer(argv: list[str] | None = None) -> int:
     )
     script.add_argument("chemin", metavar="CONF", help="Sauvegarde FortiGate .conf auditée")
     script.add_argument("--plan", default="out/plan.json", help="Plan relu (défaut : out/plan.json)")
-    script.add_argument("--sortie", default="out/script", help="Dossier des scripts (défaut : out/script)")
+    script.add_argument("--sortie", default="out/fortigate", help="Dossier des scripts (défaut : out/fortigate)")
     script.add_argument("--lot", type=int, default=20, help="Objets par lot (défaut : 20)")
     script.add_argument(
         "--inclure-defauts",

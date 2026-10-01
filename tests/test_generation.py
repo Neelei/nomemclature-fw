@@ -228,7 +228,7 @@ def test_commande_script(racine, tmp_path, capsys):
     source = racine / "examples" / "fortigate" / "nomenclature.conf"
     plan = tmp_path / "plan.json"
     plan.write_text(json.dumps(PLAN), encoding="utf-8")
-    sortie = tmp_path / "script"
+    sortie = tmp_path / "fortigate"
     assert executer(["script", str(source), "--plan", str(plan), "--sortie", str(sortie)]) == 0
     assert {chemin.name for chemin in sortie.iterdir()} == {
         "01-renommages.txt",
@@ -237,3 +237,12 @@ def test_commande_script(racine, tmp_path, capsys):
         "ignores.txt",
     }
     assert "Rien n'a été envoyé au firewall." in capsys.readouterr().out
+
+
+def test_script_sortie_defaut(capsys):
+    with pytest.raises(SystemExit) as sortie:
+        executer(["script", "--help"])
+    assert sortie.value.code == 0
+    texte = capsys.readouterr().out
+    assert "out/fortigate" in texte
+    assert "out/script" not in texte

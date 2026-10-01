@@ -128,7 +128,7 @@ Un exemple de site distant figure dans [`reseaux.exemple.csv`](reseaux.exemple.c
 uv run fwclean script inbox/pare-feu.conf --plan out/plan.json
 ```
 
-Écrit dans `out/script/` trois fichiers de commandes CLI FortiGate à relire puis à coller lot par lot : `01-renommages.txt`, `02-fusions.txt`, `03-retraits.txt`, et `ignores.txt` pour ce qui n'est pas repris (objets par défaut de FortiOS, objets encore cités). Rien n'est envoyé au firewall. Détail dans [la méthode](docs/methode-nettoyage.md#appliquer-le-plan-sur-fortigate).
+Écrit dans `out/fortigate/` trois fichiers de commandes CLI FortiGate à relire puis à coller lot par lot : `01-renommages.txt`, `02-fusions.txt`, `03-retraits.txt`, et `ignores.txt` pour ce qui n'est pas repris (objets par défaut de FortiOS, objets encore cités). Rien n'est envoyé au firewall. Détail dans [la méthode](docs/methode-nettoyage.md#appliquer-le-plan-sur-fortigate).
 
 ## Premier passage sur un export réel
 
