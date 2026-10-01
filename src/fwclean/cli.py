@@ -127,6 +127,16 @@ def executer(argv: list[str] | None = None) -> int:
     script.add_argument("--sortie", default="out/fortigate", help="Dossier des scripts (défaut : out/fortigate)")
     script.add_argument("--lot", type=int, default=20, help="Objets par lot (défaut : 20)")
     script.add_argument(
+        "--deja-applique",
+        action="append",
+        default=[],
+        metavar="SCRIPT",
+        help=(
+            "Script déjà collé sur l'équipement (répétable, dans l'ordre) : il est rejoué sur la "
+            "sauvegarde, et seuls 02b-rattrapage.txt et 03-retraits.txt sont écrits pour la suite"
+        ),
+    )
+    script.add_argument(
         "--inclure-defauts",
         action="store_true",
         help="Traiter aussi les objets par défaut de FortiGate (ALL, HTTP, always, …)",
@@ -268,14 +278,25 @@ def _script(args: argparse.Namespace) -> int:
     try:
         plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
         texte = Path(args.chemin).read_text(encoding="utf-8-sig")
-        resultat = generer_script(texte, plan, args.lot, args.inclure_defauts)
+        appliques = tuple(Path(chemin).read_text(encoding="utf-8") for chemin in args.deja_applique)
+        resultat = generer_script(texte, plan, args.lot, args.inclure_defauts, appliques)
     except (ErreurLecture, OSError, json.JSONDecodeError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     dossier = Path(args.sortie)
     dossier.mkdir(parents=True, exist_ok=True)
-    (dossier / "01-renommages.txt").write_text(resultat.renommages, encoding="utf-8")
-    (dossier / "02-fusions.txt").write_text(resultat.fusions, encoding="utf-8")
+    if appliques:
+        (dossier / "02b-rattrapage.txt").write_text(resultat.rattrapage, encoding="utf-8")
+        refus = "\n".join(f"- {ligne}" for ligne in resultat.erreurs_deja_appliquees) or "Aucune."
+        (dossier / "deja-applique.txt").write_text(
+            "Commandes des scripts déjà appliqués que FortiOS a dû refuser (simulation sur la sauvegarde) :\n\n"
+            + refus
+            + "\n",
+            encoding="utf-8",
+        )
+    else:
+        (dossier / "01-renommages.txt").write_text(resultat.renommages, encoding="utf-8")
+        (dossier / "02-fusions.txt").write_text(resultat.fusions, encoding="utf-8")
     (dossier / "03-retraits.txt").write_text(resultat.retraits, encoding="utf-8")
     ignores = "\n".join(f"- {ligne}" for ligne in resultat.ignores) or "Aucun."
     (dossier / "ignores.txt").write_text(

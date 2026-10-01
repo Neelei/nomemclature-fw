@@ -276,11 +276,22 @@ Le plan peut être modifié avant (retirer une ligne suffit à l'exclure). La co
 | `03-retraits.txt` | `delete` des objets sans référence |
 | `ignores.txt` | opérations du plan non reprises, avec la raison |
 
-Chaque fichier est découpé en lots (`--lot`, 20 objets par défaut). Les commandes tiennent compte des étapes précédentes : un groupe renommé est édité sous son nouveau nom lors des fusions.
+Chaque fichier est découpé en lots (`--lot`, 20 objets par défaut). Chaque lot est calculé sur l'état laissé par les précédents : 02 et 03 citent les noms d'après 01 (objet conservé, groupe ou portail édité), un doublon n'est pas renommé en 01 puisqu'il disparaît en 02, un objet supprimé en 02 n'est pas repris en 03, et dans 02 chaque `delete` vient après les `append` / `unselect` qui retirent ses références. Une ligne `# doublon "…" -> conservé "…" (contenu)` précède chaque fusion. Les tests rejouent 01, 02 puis 03 sur la sauvegarde avec les refus de FortiOS (objet introuvable, objet encore utilisé, champ vidé) et n'attendent aucun refus.
 
 Ne sont pas repris : les objets par défaut de FortiOS (`all`, `ALL`, `HTTP`, `DNS`, `always`, `Web Access`, …, sauf `--inclure-defauts`), les objets absents de la sauvegarde, un renommage vers un nom déjà pris, et un retrait d'objet encore cité dans la sauvegarde.
 
-Les références lues sont celles des règles (`srcaddr`, `dstaddr`, `service`, `schedule`, `poolname`), des groupes d'adresses, de services et de calendriers, et des routes. Un objet cité ailleurs (VPN SSL, IPsec, local-in, proxy, SD-WAN) n'est pas réécrit : FortiGate refuse alors le `delete`, et l'objet reste. C'est le filet de sécurité voulu : ne pas forcer.
+Les références réécrites sont celles des règles (`srcaddr`, `dstaddr`, `service`, `schedule`, `poolname`), des politiques local-in, shaping et proxy, du NAT central, des groupes d'adresses, de services et de calendriers, des routes, et du VPN SSL (`split-tunneling-routing-address`, `ip-pools` des portails, `source-address` et `tunnel-ip-pools` des réglages). Un objet cité ailleurs (SD-WAN, IPsec, …) est seulement signalé dans `ignores.txt` : ses références connues sont reportées, mais il n'est pas supprimé.
+
+### Scripts déjà appliqués
+
+Si une version précédente des scripts a déjà été collée, ne pas la recoller. Lui donner les fichiers passés, dans l'ordre :
+
+```bash
+fwclean script inbox/pare-feu.conf --plan out/plan.json \
+  --deja-applique ancien/01-renommages.txt --deja-applique ancien/02-fusions.txt
+```
+
+Les scripts sont rejoués sur la sauvegarde comme FortiOS le ferait. `deja-applique.txt` liste les commandes refusées, `02b-rattrapage.txt` contient ce qui reste des renommages et fusions, et `03-retraits.txt` est récrit pour cet état. 01 et 02 ne sont pas récrits. La simulation suppose que l'équipement partait de la sauvegarde donnée : en cas de doute, recharger cette sauvegarde et rejouer les scripts à jour.
 
 Ordre : 01, puis 02, puis 03, un lot à la fois, avec sauvegarde avant et test des flux après. Ré-exporter la configuration et relancer l'audit entre deux passes. Si le firewall est piloté par FortiManager, appliquer dans FortiManager.
 
