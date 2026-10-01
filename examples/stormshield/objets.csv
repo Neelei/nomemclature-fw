@@ -3,7 +3,7 @@
 # Site déduit du réseau avec --reseaux reseaux.exemple.csv ; groupe sur deux sites.
 # Noms conformes en MAJUSCULES : {SITE}_{PREFIXE}_{ZONE}_{DETAIL} ; services en
 # SVC_{PROTOCOLE}_{PORTS}_{LIBELLE} (SVC_TCP_443_HTTPS), groupes de services et
-# calendriers sans site ni zone (SGRP_WEB, SCH_BUREAU).
+# calendriers sans site ni zone (SG_WEB, SCH_BUREAU).
 host,SIEGE_HST_DMZ_WEB-01,10.1.1.10,,,,"Serveur web conforme"
 host,Web_DMZ,10.1.1.10,,,,"Doublon strict"
 host,web_dmz_backup,10.1.1.20,,,,"A renommer"
@@ -22,7 +22,7 @@ group,Clients_web,"SIEGE_NET_LAN_UTILISATEURS,Vlan210","Deux sites"
 group,groupe-oublie,"SIEGE_HST_LAN_LEGACY","Groupe sans reference"
 service,SVC_TCP_443_HTTPS,tcp,443,,,"HTTPS"
 service,HTTPS_custom,tcp,443,,,"Doublon de service"
-servicegroup,SGRP_WEB,"SVC_TCP_443_HTTPS","Services web"
+servicegroup,SG_WEB,"SVC_TCP_443_HTTPS","Services web"
 time,SCH_BUREAU,08:00-18:00,monday-friday,,""
 time,Bureau,08:00-18:00,monday-friday,,""
 time,fenetre-oubliee,00:00-01:00,sunday,,""

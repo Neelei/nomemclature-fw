@@ -74,13 +74,14 @@ HTTPS = _service(("tcp", [(443, 443)]))
 def test_services_calendriers_sans_site_ni_zone(contextes):
     assert est_conforme_objet("SVC_TCP_443_HTTPS", "service", contextes, signature=("TCP", "443"))
     assert est_conforme_objet("SVC_TCP_443", "service", contextes, signature=("TCP", "443"))
-    assert est_conforme_objet("SGRP_ACTIVE-DIRECTORY", "groupe-services", contextes)
+    assert est_conforme_objet("SG_ACTIVE-DIRECTORY", "groupe-services", contextes)
+    assert not est_conforme_objet("SGRP_ACTIVE-DIRECTORY", "groupe-services", contextes)
     assert est_conforme_objet("SCH_BUREAU", "calendrier", contextes)
     assert not est_conforme_objet("SVC_HTTPS", "service", contextes, signature=("TCP", "443"))
     assert not est_conforme_objet("SVC_UDP_443_HTTPS", "service", contextes, signature=("TCP", "443"))
     assert not est_conforme_objet("SVC_TCP_8443_HTTPS", "service", contextes, signature=("TCP", "443"))
     assert not est_conforme_objet("SVC_TCP_443_HT.TPS", "service", contextes, signature=("TCP", "443"))
-    assert not est_conforme_objet("SGRP_SIEGE_DMZ_WEB", "groupe-services", contextes, SITES)
+    assert not est_conforme_objet("SG_SIEGE_DMZ_WEB", "groupe-services", contextes, SITES)
     assert not est_conforme_objet("SCH_CTX_LAN_BUREAU", "calendrier", contextes)
     assert not est_conforme_objet("SIEGE_HST_LAN_A.B", "hote", contextes, SITES)
 
@@ -151,8 +152,15 @@ def test_proposition_de_noms(contextes):
 
 
 def test_groupes_de_services_et_calendriers(contextes):
-    assert proposer_objet("Active Directory", "SGRP", None, None, contextes) == "SGRP_ACTIVE-DIRECTORY"
-    assert proposer_objet("SGRP_CTX_DMZ_WEB", "SGRP", None, None, contextes) == "SGRP_WEB"
+    assert proposer_objet("Active Directory", "SG", None, None, contextes) == "SG_ACTIVE-DIRECTORY"
+    assert proposer_objet("SGRP_CTX_DMZ_WEB", "SG", None, None, contextes) == "SG_WEB"
+    assert proposer_objet("SG_CTX_DMZ_WEB", "SG", None, None, contextes) == "SG_WEB"
+
+
+def test_ancien_prefixe_sgrp_renomme_en_sg(contextes):
+    assert not est_conforme_objet("SGRP_X", "groupe-services", contextes)
+    assert proposer_objet("SGRP_X", "SG", None, None, contextes) == "SG_X"
+    assert proposer_objet("SGRP_ACTIVE-DIRECTORY", "SG", None, None, contextes) == "SG_ACTIVE-DIRECTORY"
     assert proposer_objet("Bureau", "SCH", None, None, contextes) == "SCH_BUREAU"
 
 

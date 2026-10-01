@@ -39,10 +39,15 @@ PREFIXE = {
     "groupe-adresses": "GRP",
     "service": "SVC",
     "protocole": "SVC",
-    "groupe-services": "SGRP",
+    "groupe-services": "SG",
     "vip": "VIP",
     "pool": "POOL",
     "calendrier": "SCH",
+}
+
+# Anciens préfixes retirés du détail lors d'un renommage (SGRP_WEB → SG_WEB).
+ANCIENS_PREFIXES = {
+    "SG": ("SGRP",),
 }
 
 # Espace de noms des références (adresse, service, calendrier, pool).
@@ -236,14 +241,14 @@ def _detail_depuis_nom(
 ) -> list[str]:
     """Jetons de l'ancien nom sans le préfixe, ni le site et la zone retenus."""
     jetons = [jeton for jeton in normaliser_chaine(nom).split("-") if jeton]
-    cle = prefixe.lower()
+    cles = {prefixe.lower(), *(ancien.lower() for ancien in ANCIENS_PREFIXES.get(prefixe, ()))}
     # Nom déjà découpé en SITE, PREFIXE, ZONE, … ou PREFIXE, SITE, ZONE, … :
     # l'autre segment de tête est l'ancien site, même inconnu.
-    if len(jetons) >= 4 and cle in jetons[:2] and zone_connue(jetons[2], contextes):
+    if len(jetons) >= 4 and cles & set(jetons[:2]) and zone_connue(jetons[2], contextes):
         return jetons[3:]
-    if jetons and jetons[0] == cle:
+    if jetons and jetons[0] in cles:
         jetons = jetons[1:]
-    elif len(jetons) >= 2 and jetons[1] == cle and site is not None and jetons[0] == site.lower():
+    elif len(jetons) >= 2 and jetons[1] in cles and site is not None and jetons[0] == site.lower():
         jetons = [jetons[0], *jetons[2:]]
     a_retirer = [valeur.lower() for valeur in (site, zone) if valeur]
     detail: list[str] = []

@@ -8,7 +8,7 @@ Objets d'adresse (hôtes, réseaux, plages, FQDN, groupes, VIP, pools) : `{SITE}
 
 Services : `SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}`, sans site ni zone — `SVC_TCP_443_HTTPS`, `SVC_ANY_53_DNS`.
 
-Groupes de services et calendriers : `{PREFIXE}_{DETAIL}`, sans site ni zone — `SGRP_ACTIVE-DIRECTORY`, `SCH_BUREAU`.
+Groupes de services et calendriers : `{PREFIXE}_{DETAIL}`, sans site ni zone — `SG_ACTIVE-DIRECTORY`, `SCH_BUREAU`.
 
 - majuscules uniquement (`A-Z`, `0-9`) ;
 - les segments (site, type, zone, détail) sont séparés par un underscore `_` ;
@@ -37,7 +37,7 @@ Un nom proposé trop long est raccourci **dans son dernier segment seulement**, 
 | `FQDN` | nom DNS | `SIEGE_FQDN_WAN_UPDATES` |
 | `GRP` | groupe d'adresses | `SIEGE_GRP_DMZ_WEB` |
 | `SVC` | service | `SVC_TCP_443_HTTPS` |
-| `SGRP` | groupe de services | `SGRP_WEB` |
+| `SG` | groupe de services | `SG_WEB` |
 | `VIP` | VIP | `SIEGE_VIP_MULTI_WEB` |
 | `POOL` | pool d'adresses (FortiGate) | `SIEGE_POOL_WAN_SORTANT` |
 | `SCH` | calendrier | `SCH_BUREAU` |
@@ -145,7 +145,9 @@ Protocole et ports sont calculés sur le **contenu** du service, pas sur son anc
 
 ## Groupes de services, calendriers
 
-Ni site ni zone. Leur forme est `{PREFIXE}_{DETAIL}`, et le détail **garde le libellé de l'ancien nom** : `Active Directory` → `SGRP_ACTIVE-DIRECTORY`, `Bureau` → `SCH_BUREAU`.
+Ni site ni zone. Leur forme est `{PREFIXE}_{DETAIL}`, et le détail **garde le libellé de l'ancien nom** : `Active Directory` → `SG_ACTIVE-DIRECTORY`, `Bureau` → `SCH_BUREAU`.
+
+L'ancien préfixe `SGRP` n'est plus conforme : `SGRP_WEB` est proposé au renommage en `SG_WEB`, sans répéter `SGRP` dans le détail.
 
 ## Règles
 
@@ -169,6 +171,7 @@ Avec `reseaux.exemple.csv` :
 | `HST-SIEGE-DMZ-WEB-01` | hôte | segments séparés par des tirets au lieu de `_` | `SIEGE_HST_DMZ_WEB-01` |
 | `hst_siege_dmz_web-01` | hôte | minuscules : la forme exige des majuscules | `SIEGE_HST_DMZ_WEB-01` |
 | `HST_SIEGE_DMZ_WEB-01` | hôte | ancien ordre : le type avant le site | `SIEGE_HST_DMZ_WEB-01` |
+| `SGRP_WEB` | groupe de services | ancien préfixe `SGRP` | `SG_WEB` |
 
 Si ce nom désigne un doublon strict, le plan ne le renomme pas : il le fusionne vers l'objet conservé. S'il ne sert nulle part, le plan propose son retrait, pas un renommage.
 

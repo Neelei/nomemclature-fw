@@ -2,7 +2,7 @@
 # Les lignes nat ne sont pas des règles de filtrage : elles comptent seulement comme références.
 # Les noms de règles ne sont pas audités : les règles comptent seulement comme références.
 nom,etat,action,type,source,destination,service,interface_source,interface_destination,planification,source_traduite,destination_traduite
-ALLOW_SIEGE_LAN_DMZ_HTTPS,on,pass,filter,SIEGE_NET_LAN_UTILISATEURS,SIEGE_GRP_DMZ_WEB,SGRP_WEB,lan,dmz,SCH_BUREAU,,
+ALLOW_SIEGE_LAN_DMZ_HTTPS,on,pass,filter,SIEGE_NET_LAN_UTILISATEURS,SIEGE_GRP_DMZ_WEB,SG_WEB,lan,dmz,SCH_BUREAU,,
 Acces web,on,pass,filter,SIEGE_NET_LAN_UTILISATEURS,web_dmz_backup,SVC_TCP_443_HTTPS,lan,dmz,SCH_BUREAU,,
 ALLOW_SIEGE_LAN_DMZ_LEGACY,off,pass,filter,SIEGE_HST_LAN_LEGACY,SIEGE_HST_DMZ_WEB-01,SVC_TCP_443_HTTPS,lan,dmz,,,
 ALLOW_SIEGE_VPN_LAN_HTTPS,on,pass,filter,SIEGE_RNG_VPN_CLIENTS,SIEGE_NET_LAN_UTILISATEURS,SVC_TCP_443_HTTPS,vpn,lan,,,

@@ -52,7 +52,7 @@ reseau;site;zone;vlan
 10.1.1.0/24;siege;dmz;12
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Un réseau porte son VLAN ID (`SIEGE_NET_LAN_VLAN11-SRV-ESX-MSA`) : celui de l'interface VLAN FortiGate ou SNS qui le contient, sinon celui de la colonne facultative `vlan` de `reseaux.csv`. Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
+Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Un réseau porte son VLAN ID (`SIEGE_NET_LAN_VLAN11-SRV-ESX-MSA`) : celui de l'interface VLAN FortiGate ou SNS qui le contient, sinon celui de la colonne facultative `vlan` de `reseaux.csv`. Services, groupes de services (`SG_WEB`) et calendriers n'ont ni site ni zone. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
 
