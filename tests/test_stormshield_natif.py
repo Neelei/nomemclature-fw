@@ -190,9 +190,9 @@ def test_exemple_natif(racine, contextes, referentiel):
     assert VERIFIER_USAGE in inventaire.avertissements
     assert inventaire.non_definis == ("Routeur_Principal", "global_SRV_PROXY", "mail")
     renommages = {(item.sorte, item.ancien): item.nouveau for item in resultat.renommages}
-    assert renommages[("reseau", "Res-VLAN10")] == "NET_SIEGE_LAN_VLAN10-RES"
-    assert renommages[("reseau", "Res-DMZ")] == "NET_SIEGE_DMZ_VLAN66-RES"
-    assert renommages[("hote", "srv_web")] == "HST_SIEGE_DMZ_SRV-WEB"
+    assert renommages[("reseau", "Res-VLAN10")] == "SIEGE_NET_LAN_VLAN10-RES"
+    assert renommages[("reseau", "Res-DMZ")] == "SIEGE_NET_DMZ_VLAN66-RES"
+    assert renommages[("hote", "srv_web")] == "SIEGE_HST_DMZ_SRV-WEB"
     assert renommages[("protocole", "gre_tunnel")] == "SVC_IP_47_GRE-TUNNEL"
     natifs = {(objet.sorte, objet.nom) for objet in resultat.natifs}
     assert natifs == {
@@ -266,10 +266,10 @@ def test_vlan_par_le_referentiel(racine, contextes):
     assert {str(entree.reseau): entree.vlan for entree in referentiel.entrees}["203.0.113.0/24"] is None
     resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), contextes, referentiel)
     renommages = {item.ancien: item.nouveau for item in resultat.renommages}
-    assert renommages["Reseau_Gras"] == "NET_GRAS_LAN_VLAN210-RESEAU"
+    assert renommages["Reseau_Gras"] == "GRAS_NET_LAN_VLAN210-RESEAU"
     # Le VLAN de l'interface SNS prime sur le référentiel.
-    assert renommages["Res-VLAN10"] == "NET_SIEGE_LAN_VLAN10-RES"
-    assert renommages["Res-DMZ"] == "NET_SIEGE_DMZ_VLAN66-RES"
+    assert renommages["Res-VLAN10"] == "SIEGE_NET_LAN_VLAN10-RES"
+    assert renommages["Res-DMZ"] == "SIEGE_NET_DMZ_VLAN66-RES"
 
 
 def test_vlan_absent_de_l_entree_la_plus_precise(contextes):

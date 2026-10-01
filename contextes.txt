@@ -1,4 +1,4 @@
-# Zones autorisées, une par ligne : 3e segment des objets (HST_SIEGE_LAN_…).
+# Zones autorisées, une par ligne : 3e segment des objets (SIEGE_HST_LAN_…).
 # Clés en minuscules ; matching case-insensitive. Les noms produits sont en
 # MAJUSCULES (DMZ, LAN, …). Les sites ne vont pas ici : ils viennent de reseaux.csv.
 # MULTI (membres de plusieurs zones) est réservé et toujours accepté ;

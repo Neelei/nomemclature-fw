@@ -227,10 +227,10 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Autre possibilité que 
 | `router` | ignoré |
 
 ```text
-host,HST_SIEGE_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
-network,NET_SIEGE_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
+host,SIEGE_HST_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
+network,SIEGE_NET_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
 service,SVC_TCP_443_HTTPS,tcp,443,,,"HTTPS"
-group,GRP_SIEGE_DMZ_WEB,"HST_SIEGE_DMZ_WEB-01",""
+group,SIEGE_GRP_DMZ_WEB,"SIEGE_HST_DMZ_WEB-01",""
 time,SCH_BUREAU,08:00-18:00,monday-friday,,""
 ```
 

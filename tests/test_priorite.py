@@ -13,7 +13,7 @@ def _regle(nom: str, destination: str) -> Regle:
         nom=nom,
         action="allow",
         active=True,
-        sources=("NET_SIEGE_LAN_UTILISATEURS",),
+        sources=("SIEGE_NET_LAN_UTILISATEURS",),
         destinations=(destination,),
         services=("SVC_TCP_443_HTTPS",),
         interfaces_source=("lan",),
@@ -35,16 +35,16 @@ def _auditer(racine, objets, regles=()):
 def test_le_conforme_gagne_meme_moins_reference(racine):
     resultat = _auditer(
         racine,
-        [_hote("HST_SIEGE_DMZ_WEB-01", "10.1.1.10"), _hote("Web_DMZ", "10.1.1.10")],
+        [_hote("SIEGE_HST_DMZ_WEB-01", "10.1.1.10"), _hote("Web_DMZ", "10.1.1.10")],
         [
-            _regle("ALLOW_SIEGE_LAN_DMZ_UN", "HST_SIEGE_DMZ_WEB-01"),
+            _regle("ALLOW_SIEGE_LAN_DMZ_UN", "SIEGE_HST_DMZ_WEB-01"),
             _regle("ALLOW_SIEGE_LAN_DMZ_DEUX", "Web_DMZ"),
             _regle("ALLOW_SIEGE_LAN_DMZ_TROIS", "Web_DMZ"),
             _regle("ALLOW_SIEGE_LAN_DMZ_QUATRE", "Web_DMZ"),
         ],
     )
     assert len(resultat.fusions) == 1
-    assert resultat.fusions[0].conserve == "HST_SIEGE_DMZ_WEB-01"
+    assert resultat.fusions[0].conserve == "SIEGE_HST_DMZ_WEB-01"
     assert resultat.fusions[0].supprimes == ("Web_DMZ",)
     assert resultat.renommages == ()
     assert resultat.retraits == ()
@@ -62,10 +62,10 @@ def test_le_plus_reference_puis_renommage(racine):
         ],
     )
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("Serveur_DMZ", "HST_SIEGE_DMZ_SERVEUR"),
+        ("Serveur_DMZ", "SIEGE_HST_DMZ_SERVEUR"),
     ]
     assert resultat.fusions[0].conserve == "Serveur_DMZ"
-    assert resultat.fusions[0].nouveau_nom == "HST_SIEGE_DMZ_SERVEUR"
+    assert resultat.fusions[0].nouveau_nom == "SIEGE_HST_DMZ_SERVEUR"
     assert resultat.fusions[0].supprimes == ("srv",)
     assert resultat.retraits == ()
 

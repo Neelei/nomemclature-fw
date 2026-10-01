@@ -11,7 +11,7 @@ from fwclean.model import ErreurLecture
 
 LONGUEUR_MAX = 79
 
-# Séparateur des segments (type, site, zone, détail). Le tiret reste réservé au détail.
+# Séparateur des segments (site, type, zone, détail). Le tiret reste réservé au détail.
 SEP = "_"
 
 # Limites FortiOS plus courtes que 79 (CLI reference, taille du champ name).
@@ -216,13 +216,13 @@ def est_conforme_objet(
             and parties[0] == prefixe
             and all("." not in partie for partie in parties[3:])
         )
-    if "." in nom or any("-" in partie for partie in parties[:-1]) or parties[0] != prefixe:
+    if "." in nom or any("-" in partie for partie in parties[:-1]):
         return False
     if sorte in SANS_LOCALISATION:
-        return len(parties) == 2
-    if len(parties) != 4:
+        return len(parties) == 2 and parties[0] == prefixe
+    if len(parties) != 4 or parties[1] != prefixe:
         return False
-    if not site_valide(parties[1], sites) or not zone_valide(parties[2], contextes):
+    if not site_valide(parties[0], sites) or not zone_valide(parties[2], contextes):
         return False
     return vlan is None or f"VLAN{vlan}" in parties[3].split("-")
 
@@ -236,11 +236,15 @@ def _detail_depuis_nom(
 ) -> list[str]:
     """Jetons de l'ancien nom sans le préfixe, ni le site et la zone retenus."""
     jetons = [jeton for jeton in normaliser_chaine(nom).split("-") if jeton]
-    if jetons and jetons[0] == prefixe.lower():
+    cle = prefixe.lower()
+    # Nom déjà découpé en SITE, PREFIXE, ZONE, … ou PREFIXE, SITE, ZONE, … :
+    # l'autre segment de tête est l'ancien site, même inconnu.
+    if len(jetons) >= 4 and cle in jetons[:2] and zone_connue(jetons[2], contextes):
+        return jetons[3:]
+    if jetons and jetons[0] == cle:
         jetons = jetons[1:]
-        # Nom déjà découpé en PREFIXE, SITE, ZONE, … : le 2e segment est l'ancien site, même inconnu.
-        if len(jetons) >= 3 and zone_connue(jetons[1], contextes):
-            return jetons[2:]
+    elif len(jetons) >= 2 and jetons[1] == cle and site is not None and jetons[0] == site.lower():
+        jetons = [jetons[0], *jetons[2:]]
     a_retirer = [valeur.lower() for valeur in (site, zone) if valeur]
     detail: list[str] = []
     for jeton in jetons:
@@ -280,12 +284,12 @@ def proposer_objet(
     limite: int = LONGUEUR_MAX,
     vlan: int | None = None,
 ) -> str:
-    """{PREFIXE}_{SITE}_{ZONE}_{DETAIL}, ou {PREFIXE}_{DETAIL} sans site ni zone."""
+    """{SITE}_{PREFIXE}_{ZONE}_{DETAIL}, ou {PREFIXE}_{DETAIL} sans site ni zone."""
     localise = site is not None and zone is not None
     detail = _detail_depuis_nom(nom, prefixe, contextes, site, zone)
     if vlan is not None:
         detail = _avec_vlan(detail, vlan)
-    parties = [prefixe, site, zone] if localise else [prefixe]
+    parties = [site, prefixe, zone] if localise else [prefixe]
     parties.append("-".join(detail) or "nd")
     return tronquer(SEP.join(parties).upper(), limite)
 

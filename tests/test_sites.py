@@ -85,7 +85,7 @@ def test_hors_referentiel_ctx_et_zone_par_le_nom(contextes, referentiel):
     loc, _ = _localisateur([], contextes, referentiel)
     assert loc.objet(_hote("srv_dmz_tiers", "192.0.2.50")) == Localisation("ctx", "dmz")
     assert loc.objet(_hote("SIEGE_srv", "192.0.2.51")) == Localisation("ctx", "ctx")
-    assert loc.objet(_reseau("NET_SIEGE_LAN_LARGE", "10.0.0.0", 8)) == Localisation("ctx", "lan")
+    assert loc.objet(_reseau("SIEGE_NET_LAN_LARGE", "10.0.0.0", 8)) == Localisation("ctx", "lan")
 
 
 def test_plage_pool_vip_et_fqdn(contextes, referentiel):
@@ -93,13 +93,13 @@ def test_plage_pool_vip_et_fqdn(contextes, referentiel):
     a_cheval = Objet(sorte="plage", nom="q_lan", empreinte=("v4", "10.0.0.250", "10.1.1.5"), detail="")
     pool_a_cheval = Objet(sorte="pool", nom="q", empreinte=("10.0.0.250", "10.1.1.5"), detail="")
     pool = Objet(sorte="pool", nom="nat", empreinte=("203.0.113.20", "203.0.113.30"), detail="")
-    web = _hote("HST_SIEGE_DMZ_WEB-01", "10.1.1.10")
+    web = _hote("SIEGE_HST_DMZ_WEB-01", "10.1.1.10")
     vip = Objet(
         sorte="vip",
         nom="vip_web",
-        empreinte=("vip", "203.0.113.10", "HST_SIEGE_DMZ_WEB-01", "", "", ""),
+        empreinte=("vip", "203.0.113.10", "SIEGE_HST_DMZ_WEB-01", "", "", ""),
         detail="",
-        mentions_adresses=("HST_SIEGE_DMZ_WEB-01",),
+        mentions_adresses=("SIEGE_HST_DMZ_WEB-01",),
     )
     vip_interne = Objet(
         sorte="vip", nom="vip_lan", empreinte=("vip", "198.51.100.1", "10.1.2.5", "", "", ""), detail=""
@@ -146,7 +146,7 @@ config firewall address
     edit "zabbix_srv"
         set subnet 10.1.2.10 255.255.255.255
     next
-    edit "HST_SIEGE_DMZ_WEB-01"
+    edit "SIEGE_HST_DMZ_WEB-01"
         set subnet 10.1.1.10 255.255.255.255
     next
     edit "partenaire"
@@ -159,7 +159,7 @@ config firewall policy
         set srcintf "port1"
         set dstintf "dmz"
         set srcaddr "zabbix_srv"
-        set dstaddr "HST_SIEGE_DMZ_WEB-01" "partenaire"
+        set dstaddr "SIEGE_HST_DMZ_WEB-01" "partenaire"
         set action accept
         set service "SVC_TCP_10050"
     next
@@ -167,7 +167,7 @@ end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes, referentiel)
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("zabbix_srv", "HST_SIEGE_LAN_ZABBIX-SRV"),
+        ("zabbix_srv", "SIEGE_HST_LAN_ZABBIX-SRV"),
     ]
     a_revoir = {item.nom: item for item in resultat.non_conformes if item.traitement == "revoir"}
     assert a_revoir["partenaire"].nom_propose is None
@@ -181,19 +181,19 @@ end
 def test_audit_sans_referentiel(contextes):
     texte = """
 config firewall address
-    edit "HST_SIEGE_DMZ_WEB-01"
+    edit "SIEGE_HST_DMZ_WEB-01"
         set subnet 10.1.1.10 255.255.255.255
     next
 end
 config firewall addrgrp
     edit "grp"
-        set member "HST_SIEGE_DMZ_WEB-01"
+        set member "SIEGE_HST_DMZ_WEB-01"
     next
 end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes)
     assert resultat.renommages == ()
-    item = next(item for item in resultat.non_conformes if item.nom == "HST_SIEGE_DMZ_WEB-01")
+    item = next(item for item in resultat.non_conformes if item.nom == "SIEGE_HST_DMZ_WEB-01")
     assert item.traitement == "revoir"
     assert item.commentaire == "site introuvable : adresse absente de reseaux.csv"
     assert resultat.referentiel == "aucun : objets à adresse IP signalés à revoir"

@@ -4,18 +4,18 @@ Convention commune pour les objets FortiGate et Stormshield. Elle ne décrit pas
 
 ## Forme
 
-Objets d'adresse (hôtes, réseaux, plages, FQDN, groupes, VIP, pools) : `{PREFIXE}_{SITE}_{ZONE}_{DETAIL}` — `HST_SIEGE_LAN_ZABBIXSRV`, `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`.
+Objets d'adresse (hôtes, réseaux, plages, FQDN, groupes, VIP, pools) : `{SITE}_{PREFIXE}_{ZONE}_{DETAIL}` — `SIEGE_HST_LAN_ZABBIXSRV`, `SIEGE_NET_LAN_VLAN11-SRV-ESX-MSA`. Le site vient en tête, puis le type, puis la zone.
 
 Services : `SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}`, sans site ni zone — `SVC_TCP_443_HTTPS`, `SVC_ANY_53_DNS`.
 
 Groupes de services et calendriers : `{PREFIXE}_{DETAIL}`, sans site ni zone — `SGRP_ACTIVE-DIRECTORY`, `SCH_BUREAU`.
 
 - majuscules uniquement (`A-Z`, `0-9`) ;
-- les segments (type, site, zone, détail) sont séparés par un underscore `_` ;
-- le tiret `-` est réservé à l'intérieur du dernier segment (`HST_SIEGE_LAN_ZABBIX-SRV`, `HST_SIEGE_DMZ_WEB-01`) et aux plages de ports d'un service (`SVC_UDP_67-68_DHCP`). Type, site et zone n'en contiennent jamais ;
+- les segments (site, type, zone, détail) sont séparés par un underscore `_` ;
+- le tiret `-` est réservé à l'intérieur du dernier segment (`SIEGE_HST_LAN_ZABBIX-SRV`, `SIEGE_HST_DMZ_WEB-01`) et aux plages de ports d'un service (`SVC_UDP_67-68_DHCP`). Type, site et zone n'en contiennent jamais ;
 - le point `.` n'existe que dans le segment des ports d'un service, pour séparer plusieurs ports (`SVC_ANY_88.464_KERBEROS`) ;
 - ni `_`, `-` ou `.` en début, en fin, ou doublé ; pas d'espace ni d'accent ;
-- exactement quatre segments pour un objet d'adresse (préfixe, site, zone, détail), trois ou quatre pour un service (préfixe, protocole, ports, libellé facultatif), deux pour un groupe de services ou un calendrier (préfixe, détail) ;
+- exactement quatre segments pour un objet d'adresse (site, préfixe, zone, détail), trois ou quatre pour un service (préfixe, protocole, ports, libellé facultatif), deux pour un groupe de services ou un calendrier (préfixe, détail) ;
 - un réseau dont le VLAN est connu dans la configuration porte `VLAN{ID}` dans son détail (voir [Réseaux et VLAN](#réseaux-et-vlan)).
 
 Longueur maximale, reprise des limites FortiOS :
@@ -31,22 +31,22 @@ Un nom proposé trop long est raccourci **dans son dernier segment seulement**, 
 
 | Préfixe | Objet | Exemple |
 | --- | --- | --- |
-| `HST` | hôte | `HST_SIEGE_DMZ_WEB-01` |
-| `NET` | réseau | `NET_SIEGE_LAN_VLAN10-UTILISATEURS` |
-| `RNG` | plage d'adresses | `RNG_SIEGE_VPN_CLIENTS` |
-| `FQDN` | nom DNS | `FQDN_SIEGE_WAN_UPDATES` |
-| `GRP` | groupe d'adresses | `GRP_SIEGE_DMZ_WEB` |
+| `HST` | hôte | `SIEGE_HST_DMZ_WEB-01` |
+| `NET` | réseau | `SIEGE_NET_LAN_VLAN10-UTILISATEURS` |
+| `RNG` | plage d'adresses | `SIEGE_RNG_VPN_CLIENTS` |
+| `FQDN` | nom DNS | `SIEGE_FQDN_WAN_UPDATES` |
+| `GRP` | groupe d'adresses | `SIEGE_GRP_DMZ_WEB` |
 | `SVC` | service | `SVC_TCP_443_HTTPS` |
 | `SGRP` | groupe de services | `SGRP_WEB` |
-| `VIP` | VIP | `VIP_SIEGE_MULTI_WEB` |
-| `POOL` | pool d'adresses (FortiGate) | `POOL_SIEGE_WAN_SORTANT` |
+| `VIP` | VIP | `SIEGE_VIP_MULTI_WEB` |
+| `POOL` | pool d'adresses (FortiGate) | `SIEGE_POOL_WAN_SORTANT` |
 | `SCH` | calendrier | `SCH_BUREAU` |
 
-Le préfixe doit correspondre au type réel de l'objet. `NET_SIEGE_DMZ_WEB` n'est pas un nom conforme pour un hôte.
+Le préfixe doit correspondre au type réel de l'objet. `SIEGE_NET_DMZ_WEB` n'est pas un nom conforme pour un hôte.
 
 ## Site et zone
 
-Le **site** est le deuxième segment d'un objet d'adresse. Il est valide s'il figure dans le référentiel [`reseaux.csv`](#référentiel-reseauxcsv), ou s'il vaut `MULTI`.
+Le **site** est le premier segment d'un objet d'adresse, le préfixe le deuxième. Il est valide s'il figure dans le référentiel [`reseaux.csv`](#référentiel-reseauxcsv), ou s'il vaut `MULTI`.
 
 La **zone** est le troisième segment. Elle est valide si elle figure dans [`contextes.txt`](../contextes.txt), ou si elle vaut `MULTI`.
 
@@ -74,7 +74,7 @@ Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01.
 
 **Pas de nom sans correspondance.** Un objet d'adresse dont le site ou la zone reste introuvable n'est pas renommé. Le rapport le liste avec le traitement `revoir` et un commentaire (« site introuvable : adresse absente de reseaux.csv », « site et zone introuvables : FQDN sans adresse IP… »), et le plan le reprend dans `a_revoir`. On complète `reseaux.csv` puis on relance l'audit. `CTX` n'apparaît dans aucun nom proposé, et un nom existant en `CTX` n'est pas conforme.
 
-Un nom est jugé sur sa forme : `HST_SIEGE_LAN_X` est conforme dès que `SIEGE` est un site connu et `LAN` une zone connue, même si l'adresse est en fait en DMZ. La déduction ci-dessous sert à **proposer** un nom pour ce qui ne l'est pas.
+Un nom est jugé sur sa forme : `SIEGE_HST_LAN_X` est conforme dès que `SIEGE` est un site connu et `LAN` une zone connue, même si l'adresse est en fait en DMZ. La déduction ci-dessous sert à **proposer** un nom pour ce qui ne l'est pas.
 
 ### Référentiel `reseaux.csv`
 
@@ -95,7 +95,7 @@ reseau;site;zone;vlan
 - lignes vides et commentaires `#` ignorés ;
 - un même réseau déclaré deux fois avec un site, une zone ou un VLAN différents est refusé.
 
-**Sites distants.** Les réseaux connectés viennent de `fwclean reseaux` ; les autres (sites distants, pools VPN, IP publiques) s'ajoutent à la main, une ligne `reseau;site;zone;vlan` par réseau, par exemple `10.211.0.0/24;gras;dmz;211` ou `10.210.0.0/24;gras;lan;` sans VLAN. Un nouveau site est un ajout libre : l'écrire suffit à le rendre valide dans les noms (`HST_GRAS_DMZ_…`). La zone doit déjà figurer dans `contextes.txt`. `fwclean reseaux … --ajouter` complète ensuite le fichier avec les seuls réseaux absents et se relance sans écraser ces ajouts manuels (voir [la méthode](methode-nettoyage.md#référentiel-réseaux)).
+**Sites distants.** Les réseaux connectés viennent de `fwclean reseaux` ; les autres (sites distants, pools VPN, IP publiques) s'ajoutent à la main, une ligne `reseau;site;zone;vlan` par réseau, par exemple `10.211.0.0/24;gras;dmz;211` ou `10.210.0.0/24;gras;lan;` sans VLAN. Un nouveau site est un ajout libre : l'écrire suffit à le rendre valide dans les noms (`GRAS_HST_DMZ_…`). La zone doit déjà figurer dans `contextes.txt`. `fwclean reseaux … --ajouter` complète ensuite le fichier avec les seuls réseaux absents et se relance sans écraser ces ajouts manuels (voir [la méthode](methode-nettoyage.md#référentiel-réseaux)).
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le dépôt versionne seulement [`reseaux.exemple.csv`](../reseaux.exemple.csv), à copier. Sans `reseaux.csv`, l'audit tourne quand même : aucun site n'est connu, les objets d'adresse non conformes sont tous signalés à revoir.
 
@@ -112,9 +112,9 @@ Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le d
 
 « Commun » : si tous les membres localisés ont la même valeur, c'est elle ; s'ils en ont plusieurs, `MULTI` ; si aucun n'est localisé, l'objet est à revoir. Un membre non localisé ne compte pas : un groupe d'un hôte `SIEGE` et d'une adresse partenaire hors référentiel reste `SIEGE`.
 
-Avec le référentiel d'exemple, `10.1.1.10` est dans `10.1.0.0/16` (LAN) et dans `10.1.1.0/24` (DMZ) : le `/24` est plus précis, l'hôte devient `HST_SIEGE_DMZ_…`.
+Avec le référentiel d'exemple, `10.1.1.10` est dans `10.1.0.0/16` (LAN) et dans `10.1.1.0/24` (DMZ) : le `/24` est plus précis, l'hôte devient `SIEGE_HST_DMZ_…`.
 
-Le détail reprend l'ancien nom sans préfixe, et sans le site et la zone retenus : `SIEGE_zabbix` → `HST_SIEGE_LAN_ZABBIX`, `Web_DMZ` → `HST_SIEGE_DMZ_WEB`. Un autre mot de zone reste dans le détail : `MGMT [vlan13]` en LAN devient `NET_SIEGE_LAN_VLAN13-MGMT`. Un ancien nom déjà découpé en préfixe, site, zone (`HST_SIEGE_DMZ_WEB-01` ou `HST-SIEGE-DMZ-WEB-01`) garde seulement son détail, même si son site n'est pas connu.
+Le détail reprend l'ancien nom sans préfixe, et sans le site et la zone retenus : `SIEGE_zabbix` → `SIEGE_HST_LAN_ZABBIX`, `Web_DMZ` → `SIEGE_HST_DMZ_WEB`. Un autre mot de zone reste dans le détail : `MGMT [vlan13]` en LAN devient `SIEGE_NET_LAN_VLAN13-MGMT`. Un ancien nom déjà découpé garde seulement son détail, même si son site n'est pas connu, qu'il soit dans l'ordre actuel site, préfixe, zone (`GRAS_HST_DMZ_WEB-01`) ou dans l'ancien ordre préfixe, site, zone (`HST_SIEGE_DMZ_WEB-01`, `HST-SIEGE-DMZ-WEB-01`) : il devient `SIEGE_HST_DMZ_WEB-01` sans répéter site ni type.
 
 ## Réseaux et VLAN
 
@@ -125,9 +125,9 @@ Sur FortiGate, les interfaces VLAN de `config system interface` (`set vlanid`) d
 
 Sur Stormshield (fichiers natifs), les interfaces `[vlanN]` du fichier `Network` à adresse statique donnent le VLAN (`Tag=`) des réseaux qu'elles contiennent, de la même façon. Une interface en `dhcp` ne donne rien.
 
-Un réseau sans VLAN connu dans la configuration prend ensuite le VLAN du **référentiel** : l'entrée de `reseaux.csv` la plus précise qui le contient, si elle a une colonne `vlan` renseignée. Si cette entrée la plus précise n'a pas de VLAN, rien n'est ajouté, même si un réseau plus large en a un. C'est ce qui donne `NET_SIEGE_LAN_VLAN11-RES` à `Res-VLAN11` (`10.0.0.0/24`) sur un SNS de sortie Internet dont les VLAN internes sont routés vers le FortiGate : `fwclean reseaux` sur le FortiGate écrit le `vlanid` de chaque interface dans la colonne `vlan`. Le VLAN de la configuration prime toujours sur celui du référentiel.
+Un réseau sans VLAN connu dans la configuration prend ensuite le VLAN du **référentiel** : l'entrée de `reseaux.csv` la plus précise qui le contient, si elle a une colonne `vlan` renseignée. Si cette entrée la plus précise n'a pas de VLAN, rien n'est ajouté, même si un réseau plus large en a un. C'est ce qui donne `SIEGE_NET_LAN_VLAN11-RES` à `Res-VLAN11` (`10.0.0.0/24`) sur un SNS de sortie Internet dont les VLAN internes sont routés vers le FortiGate : `fwclean reseaux` sur le FortiGate écrit le `vlanid` de chaque interface dans la colonne `vlan`. Le VLAN de la configuration prime toujours sur celui du référentiel.
 
-Le détail commence alors par `VLAN{ID}`, et les mentions de VLAN de l'ancien nom sont retirées : `SRV-ESX-MSA [vlan11]` → `NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`, `MEETING [valn50]` → `NET_SIEGE_LAN_VLAN50-MEETING`. L'ID vient de la configuration (ou du référentiel), jamais de l'ancien nom : `EDF [vlan20]`, sur une interface en VLAN 52, devient `NET_SIEGE_LAN_VLAN52-EDF`. Un réseau dont le VLAN est connu et dont le nom ne contient pas `VLAN{ID}` n'est pas conforme. Sans VLAN connu (réseau distant, CSV Stormshield, référentiel sans VLAN), rien n'est ajouté.
+Le détail commence alors par `VLAN{ID}`, et les mentions de VLAN de l'ancien nom sont retirées : `SRV-ESX-MSA [vlan11]` → `SIEGE_NET_LAN_VLAN11-SRV-ESX-MSA`, `MEETING [valn50]` → `SIEGE_NET_LAN_VLAN50-MEETING`. L'ID vient de la configuration (ou du référentiel), jamais de l'ancien nom : `EDF [vlan20]`, sur une interface en VLAN 52, devient `SIEGE_NET_LAN_VLAN52-EDF`. Un réseau dont le VLAN est connu et dont le nom ne contient pas `VLAN{ID}` n'est pas conforme. Sans VLAN connu (réseau distant, CSV Stormshield, référentiel sans VLAN), rien n'est ajouté.
 
 ## Services
 
@@ -157,17 +157,18 @@ Avec `reseaux.exemple.csv` :
 
 | Nom actuel | Contenu | Pourquoi | Nom proposé (si l'objet est conservé) |
 | --- | --- | --- | --- |
-| `web_dmz_backup` | `10.1.1.20/32` | pas de préfixe ni de site | `HST_SIEGE_DMZ_WEB-BACKUP` |
-| `Vlan210` | `10.210.0.0/24` | pas de préfixe ni de site | `NET_GRAS_LAN_VLAN210` |
+| `web_dmz_backup` | `10.1.1.20/32` | pas de préfixe ni de site | `SIEGE_HST_DMZ_WEB-BACKUP` |
+| `Vlan210` | `10.210.0.0/24` | pas de préfixe ni de site | `GRAS_NET_LAN_VLAN210` |
 | `partenaire` | `192.0.2.10/32` | hors référentiel | aucun : à revoir, « site et zone introuvables » |
-| `Clients web` | membres `SIEGE` et `GRAS` en LAN | espace, deux sites | `GRP_MULTI_LAN_CLIENTS-WEB` |
-| `HST-DMZ-WEB-01` | `10.1.1.10/32` | ancienne forme, sans site | `HST_SIEGE_DMZ_WEB-01` |
-| `LAN Utilisateurs` | `10.0.0.0/24`, VLAN 10 | espace, pas de VLAN | `NET_SIEGE_LAN_VLAN10-UTILISATEURS` |
+| `Clients web` | membres `SIEGE` et `GRAS` en LAN | espace, deux sites | `MULTI_GRP_LAN_CLIENTS-WEB` |
+| `HST-DMZ-WEB-01` | `10.1.1.10/32` | ancienne forme, sans site | `SIEGE_HST_DMZ_WEB-01` |
+| `LAN Utilisateurs` | `10.0.0.0/24`, VLAN 10 | espace, pas de VLAN | `SIEGE_NET_LAN_VLAN10-UTILISATEURS` |
 | `Appli metier 8443` | `tcp/8443` | espaces, pas de préfixe | `SVC_TCP_8443_APPLI-METIER` |
 | `SVC_HTTPS` | `tcp/443` | ni protocole ni port | `SVC_TCP_443_HTTPS` |
 | `DNS` | `tcp/53, udp/53` | pas de préfixe | `SVC_ANY_53_DNS` |
-| `HST-SIEGE-DMZ-WEB-01` | hôte | segments séparés par des tirets au lieu de `_` | `HST_SIEGE_DMZ_WEB-01` |
-| `hst_siege_dmz_web-01` | hôte | minuscules : la forme exige des majuscules | `HST_SIEGE_DMZ_WEB-01` |
+| `HST-SIEGE-DMZ-WEB-01` | hôte | segments séparés par des tirets au lieu de `_` | `SIEGE_HST_DMZ_WEB-01` |
+| `hst_siege_dmz_web-01` | hôte | minuscules : la forme exige des majuscules | `SIEGE_HST_DMZ_WEB-01` |
+| `HST_SIEGE_DMZ_WEB-01` | hôte | ancien ordre : le type avant le site | `SIEGE_HST_DMZ_WEB-01` |
 
 Si ce nom désigne un doublon strict, le plan ne le renomme pas : il le fusionne vers l'objet conservé. S'il ne sert nulle part, le plan propose son retrait, pas un renommage.
 

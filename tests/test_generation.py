@@ -118,7 +118,7 @@ def test_commande_reseaux(tmp_path, capsys, monkeypatch):
 
 OBJETS = """
 config firewall address
-    edit "HST_SIEGE_DMZ_WEB-01"
+    edit "SIEGE_HST_DMZ_WEB-01"
         set subnet 10.1.1.10 255.255.255.255
     next
     edit "Web_DMZ"
@@ -132,7 +132,7 @@ config firewall address
 end
 config firewall addrgrp
     edit "Groupe web"
-        set member "Web_DMZ" "HST_SIEGE_DMZ_WEB-01"
+        set member "Web_DMZ" "SIEGE_HST_DMZ_WEB-01"
     next
 end
 config firewall service custom
@@ -163,7 +163,7 @@ end
 PLAN = {
     "constructeur": "fortigate",
     "renommages": [
-        {"sorte": "groupe-adresses", "ancien": "Groupe web", "nouveau": "GRP_SIEGE_DMZ_WEB", "references": []},
+        {"sorte": "groupe-adresses", "ancien": "Groupe web", "nouveau": "SIEGE_GRP_DMZ_WEB", "references": []},
         {"sorte": "service", "ancien": "HTTP", "nouveau": "SVC_TCP_80_HTTP", "references": []},
         {"sorte": "calendrier", "ancien": "Bureau", "nouveau": "SCH_BUREAU", "references": []},
         {"sorte": "hote", "ancien": "absent", "nouveau": "HST_X", "references": []},
@@ -172,43 +172,43 @@ PLAN = {
         {
             "sorte": "hote",
             "contenu": "10.1.1.10/32",
-            "conserve": "HST_SIEGE_DMZ_WEB-01",
-            "nouveau_nom": "HST_SIEGE_DMZ_WEB-01",
+            "conserve": "SIEGE_HST_DMZ_WEB-01",
+            "nouveau_nom": "SIEGE_HST_DMZ_WEB-01",
             "supprimes": ["Web_DMZ"],
             "references_reecrites": [],
         }
     ],
     "retraits": [
         {"sorte": "hote", "nom": "srv-oublie", "motif": "aucune reference"},
-        {"sorte": "hote", "nom": "HST_SIEGE_DMZ_WEB-01", "motif": "aucune reference"},
+        {"sorte": "hote", "nom": "SIEGE_HST_DMZ_WEB-01", "motif": "aucune reference"},
     ],
 }
 
 
 def test_script_renommages_fusions_retraits():
     script = generer_script(OBJETS, PLAN)
-    assert 'config firewall addrgrp\n    rename "Groupe web" to "GRP_SIEGE_DMZ_WEB"\nend' in script.renommages
+    assert 'config firewall addrgrp\n    rename "Groupe web" to "SIEGE_GRP_DMZ_WEB"\nend' in script.renommages
     assert 'config firewall schedule recurring\n    rename "Bureau" to "SCH_BUREAU"' in script.renommages
     assert "HTTP" not in script.renommages
     assert "# --- lot 1/1 ---" in script.renommages
     # Le groupe a déjà son nouveau nom, et contient déjà l'objet conservé : unselect seul.
     assert (
-        'config firewall addrgrp\n    edit "GRP_SIEGE_DMZ_WEB"\n        unselect member "Web_DMZ"\n'
+        'config firewall addrgrp\n    edit "SIEGE_GRP_DMZ_WEB"\n        unselect member "Web_DMZ"\n'
         in script.fusions
     )
     assert (
         "    edit 7\n"
-        '        append dstaddr "HST_SIEGE_DMZ_WEB-01"\n'
+        '        append dstaddr "SIEGE_HST_DMZ_WEB-01"\n'
         '        unselect dstaddr "Web_DMZ"\n'
     ) in script.fusions
-    assert '    edit 3\n        set dstaddr "HST_SIEGE_DMZ_WEB-01"\n' in script.fusions
+    assert '    edit 3\n        set dstaddr "SIEGE_HST_DMZ_WEB-01"\n' in script.fusions
     assert script.fusions.index("edit 3") < script.fusions.index('delete "Web_DMZ"')
     assert 'delete "srv-oublie"' in script.retraits
-    assert 'delete "HST_SIEGE_DMZ_WEB-01"' not in script.retraits
+    assert 'delete "SIEGE_HST_DMZ_WEB-01"' not in script.retraits
     assert set(script.ignores) == {
         "renommage de HTTP : objet par défaut FortiGate",
         "renommage de absent : absent de l'export",
-        "retrait de HST_SIEGE_DMZ_WEB-01 : encore référencé dans l'export",
+        "retrait de SIEGE_HST_DMZ_WEB-01 : encore référencé dans l'export",
     }
     assert script.compteurs == {"renommages": 2, "fusions": 1, "retraits": 1}
 

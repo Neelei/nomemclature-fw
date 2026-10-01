@@ -44,7 +44,7 @@ Un audit porte sur un seul constructeur et un seul format (FortiGate, CSV Storms
 
 ## Sites et zones
 
-Les noms d'objets prennent la forme `HST_SIEGE_LAN_ZABBIXSRV`. Les règles ne sont pas renommées pour le moment. Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
+Les noms d'objets prennent la forme `SIEGE_HST_LAN_ZABBIXSRV`. Les règles ne sont pas renommées pour le moment. Le site et la zone sont déduits de l'adresse grâce à `reseaux.csv` :
 
 ```text
 reseau;site;zone;vlan
@@ -52,7 +52,7 @@ reseau;site;zone;vlan
 10.1.1.0/24;siege;dmz;12
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Un réseau porte son VLAN ID (`NET_SIEGE_LAN_VLAN11-SRV-ESX-MSA`) : celui de l'interface VLAN FortiGate ou SNS qui le contient, sinon celui de la colonne facultative `vlan` de `reseaux.csv`. Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
+Le réseau le plus précis qui contient l'objet gagne. Un groupe dont les membres sont sur plusieurs sites prend `MULTI`. Un objet hors référentiel n'est pas renommé : il est listé à revoir avec un commentaire. Un réseau porte son VLAN ID (`SIEGE_NET_LAN_VLAN11-SRV-ESX-MSA`) : celui de l'interface VLAN FortiGate ou SNS qui le contient, sinon celui de la colonne facultative `vlan` de `reseaux.csv`. Services, groupes de services et calendriers n'ont ni site ni zone. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
 
@@ -77,7 +77,7 @@ uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie
 uv run fwclean audit examples/stormshield-natif --reseaux reseaux.exemple.csv --sortie out/stormshield-natif
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `HST_SIEGE_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `NET_GRAS_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `GRP_MULTI_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. Dans l'exemple SNS natif, la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC, groupe absent).
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `SIEGE_HST_LAN_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `GRAS_NET_LAN_VLAN210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `MULTI_GRP_LAN_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. Dans l'exemple SNS natif, la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC, groupe absent).
 
 Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup` et `servicegroup` sont lus : sans eux, un membre de groupe paraîtrait orphelin. Les objets globaux SMC et les objets routeur ne sont pas gérés : un hôte qui ne sert que de passerelle de routeur ou n'est cité que par des objets globaux peut apparaître à tort comme orphelin. Avant chaque suppression, lancer « Vérifier l'utilisation » sur l'objet dans le SNS. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés. Les objets natifs du SNS (base par défaut : `http`, `dns_udp`, `rfc5735_private_1`, `update1.stormshield.eu`…) ne sont ni renommés, ni supprimés, ni retirés, et ne comptent pas comme non conformes ; le rapport les liste à part (« Objets natifs SNS ignorés »). La liste est décrite dans [la méthode](docs/methode-nettoyage.md#objets-natifs-sns).
 
@@ -132,4 +132,4 @@ uv run fwclean script inbox/pare-feu.conf --plan out/plan.json
 
 ## Premier passage sur un export réel
 
-Générer ou remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`HST_SIEGE_DMZ_WEB-01`). Une fois le plan relu, produire le script, l'appliquer lot par lot, puis ré-exporter et relancer l'audit. Ce passage ne sert pas à réécrire les règles.
+Générer ou remplir `reseaux.csv` avec les réseaux et sites réels, ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel. Les noms proposés sont en majuscules (`SIEGE_HST_DMZ_WEB-01`). Une fois le plan relu, produire le script, l'appliquer lot par lot, puis ré-exporter et relancer l'audit. Ce passage ne sert pas à réécrire les règles.
