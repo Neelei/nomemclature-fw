@@ -144,8 +144,10 @@ def test_ajouter_remplace_le_nom_technique_par_l_alias():
         "10.210.0.0/24;gras;;210;SRV",
         "",
         "# Ajouté par fwclean reseaux --ajouter depuis test.conf :",
-        "172.16.255.252/30;siege;wan;777;VLAN-777  # VLAN-777, zone WAN — sans alias : nom de l'interface"
-        " ; nom peu parlant",
+        (
+            "172.16.255.252/30;siege;wan;777;VLAN-777  # VLAN-777, zone WAN — sans alias : nom de l'interface"
+            " ; nom peu parlant"
+        ),
     ]
     assert any(ligne.startswith("10.118.131.0/24") for ligne in completion.differentes)
 
