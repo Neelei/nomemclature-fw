@@ -98,8 +98,9 @@ def executer(argv: list[str] | None = None) -> int:
             "et écrit un réseau par interface qui porte une IP. SNS : lit le fichier Network "
             "(interfaces à adresse statique). Colonnes reseau;site;zone;vlan;interface : la zone "
             "FortiGate est traduite par contextes.txt (« mgmt = MGMT NETWORKS »), vide hors zone "
-            "et toujours vide pour SNS ; vlan = vlanid ou Tag ; interface = nom de l'interface "
-            "(Name côté SNS), à remplacer à la main s'il ne dit rien (port3, VLAN-16…)."
+            "et toujours vide pour SNS ; vlan = vlanid ou Tag ; interface = alias FortiGate "
+            "(set alias), à défaut nom de l'interface, et Name côté SNS ; à remplacer à la main "
+            "s'il ne dit rien (port3, VLAN-131…)."
         ),
     )
     reseaux.add_argument(
@@ -117,7 +118,7 @@ def executer(argv: list[str] | None = None) -> int:
         help=(
             "Compléter le fichier existant : ajoute les réseaux absents, remplit zone, VLAN et "
             "interface des lignes du même site qui n'ont pas d'interface (ancien format à 4 "
-            "colonnes), garde les autres lignes et commentaires, signale sans les modifier les "
+            "colonnes), remplace par l'alias un nom technique FortiGate encore en place, garde les autres lignes et commentaires, signale sans les modifier les "
             "réseaux déjà présents avec un autre site, zone, VLAN ou interface"
         ),
     )
@@ -254,7 +255,10 @@ def _reseaux(args: argparse.Namespace) -> int:
         if desactivees:
             print(f"Interfaces désactivées, laissées en commentaire : {len(desactivees)}.")
         code = 0
-    peu_parlantes = sorted({ligne.interface for ligne in lignes if peu_parlant(ligne.interface)})
+    sans_alias = sorted({ligne.interface for ligne in lignes if ligne.sans_alias})
+    if sans_alias:
+        print(f"Interfaces FortiGate sans alias, nom technique écrit à la place : {', '.join(sans_alias)}.")
+    peu_parlantes = sorted({ligne.nom_csv for ligne in lignes if peu_parlant(ligne.nom_csv)})
     if peu_parlantes:
         print(
             f"Noms d'interfaces peu parlants, à remplacer dans la colonne interface : "
@@ -264,11 +268,12 @@ def _reseaux(args: argparse.Namespace) -> int:
 
 
 def _afficher_completion(sortie: Path, completion: Completion) -> int:
-    if completion.ajoutees or completion.migrees:
+    if completion.ajoutees or completion.migrees or completion.alias_appliques:
         sortie.write_text(completion.texte, encoding="utf-8")
     print(f"Référentiel complété : {sortie}")
     print(
         f"Ajoutés : {len(completion.ajoutees)}, interface complétée : {len(completion.migrees)}, "
+        f"alias appliqué : {len(completion.alias_appliques)}, "
         f"déjà présents : {len(completion.presentes)}, "
         f"différents (non modifiés) : {len(completion.differentes)}, "
         f"écartés : {len(completion.ecartees)}."
@@ -276,6 +281,7 @@ def _afficher_completion(sortie: Path, completion: Completion) -> int:
     for libelle, liste in (
         ("ajouté", completion.ajoutees),
         ("interface complétée", completion.migrees),
+        ("alias appliqué", completion.alias_appliques),
         ("déjà présent", completion.presentes),
         ("différent, non modifié", completion.differentes),
         ("écarté", completion.ecartees),

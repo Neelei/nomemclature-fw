@@ -53,7 +53,7 @@ Le préfixe doit correspondre au type réel de l'objet. `SIEGE_NET_DMZ_WEB` n'es
 
 Le **site** est le premier segment d'un objet d'adresse, le préfixe le deuxième. Il est valide s'il figure dans le référentiel [`reseaux.csv`](#référentiel-reseauxcsv), ou s'il vaut `MULTI`.
 
-L'**interface** est le troisième segment des objets non réseau et le dernier des réseaux. C'est la colonne `interface` de `reseaux.csv`, **normalisée** : `_`, espaces et autres signes deviennent `-`, accents retirés, majuscules. `LABO_ANA` → `LABO-ANA`, `WIFI INVITE` → `WIFI-INVITE`, `SAN Mgmt` → `SAN-MGMT`. Sans cela on ne pourrait plus découper le nom sur `_`. Deux interfaces qui donnent le même nom normalisé (`VLAN-20` et `VLAN_20`) sont signalées par `fwclean reseaux` : en renommer une dans la colonne.
+L'**interface** est le troisième segment des objets non réseau et le dernier des réseaux. C'est la colonne `interface` de `reseaux.csv`, **normalisée** : `_`, espaces et autres signes deviennent `-`, accents retirés, majuscules. `LABO_ANA` → `LABO-ANA`, `WIFI INVITE` → `WIFI-INVITE`, `SAN Mgmt` → `SAN-MGMT`. Sans cela on ne pourrait plus découper le nom sur `_`. Deux interfaces qui donnent le même nom normalisé (`LABO_ANA` et `LABO-ANA`) sont signalées par `fwclean reseaux` : en renommer une dans la colonne.
 
 La **zone** n'apparaît que dans les réseaux FortiGate. C'est la zone FortiGate traduite par [`contextes.txt`](../contextes.txt) en nom court d'un seul segment (`mgmt = MGMT NETWORKS`). Stormshield n'a pas de zones : ses réseaux n'ont jamais de segment zone.
 
@@ -99,7 +99,7 @@ reseau;site;zone;vlan;interface
 - un réseau CIDR par ligne (IPv4 ou IPv6) ;
 - site et zone en minuscules ; `zone` facultative : vide hors zone FortiGate, toujours vide pour Stormshield ; si elle est remplie, elle doit être dans `contextes.txt` ;
 - `vlan` facultatif : VLAN ID de 1 à 4094 ;
-- `interface` : nom de l'interface tel que l'écrit l'équipement (`VLAN-16`, `LABO_ANA`), remplie par `fwclean reseaux` et **modifiable à la main**, par exemple pour remplacer avant la migration un nom qui ne dit rien (`port3`, `VLAN-16`) par le libellé du réseau (`CABINES`) ;
+- `interface` : côté FortiGate, **alias** de l'interface (`set alias`, `CENTRALE DETECTION GAZ` pour `VLAN-25`), à défaut son nom ; côté Stormshield, le `Name` de l'interface. Remplie par `fwclean reseaux` et **modifiable à la main**, par exemple pour remplacer avant la migration un alias ou un nom qui ne dit rien (`VLAN-131`, `port3`) par le libellé du réseau (`IDRAC`) ;
 - lignes vides et commentaires `#` ignorés ; un en-tête répété plus bas (bloc collé) est ignoré ;
 - un même réseau déclaré deux fois avec un site, une zone, un VLAN ou une interface différents est refusé.
 

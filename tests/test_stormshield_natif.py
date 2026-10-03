@@ -374,11 +374,12 @@ def test_reseaux_ajouter_migre_l_ancien_format(racine, tmp_path, capsys, monkeyp
     )
     assert texte.endswith("10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)\n")
     assert (
-        "Ajoutés : 1, interface complétée : 1, déjà présents : 0, différents (non modifiés) : 0, "
+        "Ajoutés : 1, interface complétée : 1, alias appliqué : 0, déjà présents : 0, "
+        "différents (non modifiés) : 0, "
         "écartés : 1."
     ) in sortie
     assert executer(["reseaux", source, "--site", "siege", "--ajouter"]) == 0
-    assert "Ajoutés : 0, interface complétée : 0, déjà présents : 2" in capsys.readouterr().out
+    assert "Ajoutés : 0, interface complétée : 0, alias appliqué : 0, déjà présents : 2" in capsys.readouterr().out
     assert (tmp_path / "reseaux.csv").read_text(encoding="utf-8") == texte
     with pytest.raises(SystemExit):
         executer(["reseaux", source, "--site", "siege", "--ajouter", "--ecraser"])

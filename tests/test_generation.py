@@ -5,7 +5,7 @@ import pytest
 from fwclean.cli import executer
 from fwclean.model import ErreurLecture
 from fwclean.naming import analyser_contextes, cle_correspondance
-from fwclean.reseaux import Ligne, ecrire_reseaux, reseaux_connectes
+from fwclean.reseaux import Ligne, completer_reseaux, ecrire_reseaux, reseaux_connectes
 from fwclean.script import generer_script
 from fwclean.sites import analyser_reseaux
 
@@ -28,6 +28,7 @@ config system interface
     next
     edit "IDRAC"
         set ip 10.118.131.252 255.255.255.0
+        set alias "VLAN-131"
         set vlanid 131
     next
     edit "VLAN-777"
@@ -93,11 +94,13 @@ def test_ecriture_du_referentiel():
     zones, correspondances = _contextes()
     texte = ecrire_reseaux(reseaux_connectes(CONFIG, zones, correspondances), "SIEGE", "test.conf", zones)
     assert "reseau;site;zone;vlan;interface" in texte
+    # FortiGate : l'alias (set alias) en priorité, le nom technique s'il n'y en a pas.
+    assert "10.0.0.0/24;siege;lan;11;SRV-ESX  # VLAN-11 (SRV-ESX), zone LAN\n" in texte
     assert (
-        "10.0.0.0/24;siege;lan;11;VLAN-11  # VLAN-11 (SRV-ESX), zone LAN — nom peu parlant (alias : SRV-ESX)"
+        "10.118.131.0/24;siege;mgmt;131;VLAN-131  # IDRAC (VLAN-131), zone MGMT NETWORKS"
+        " — alias peu parlant (nom : IDRAC)\n"
     ) in texte
-    assert "10.118.131.0/24;siege;mgmt;131;IDRAC  # IDRAC, zone MGMT NETWORKS\n" in texte
-    assert "192.168.1.0/24;siege;;;mgmt  # mgmt, hors zone\n" in texte
+    assert "192.168.1.0/24;siege;;;mgmt  # mgmt, hors zone — sans alias : nom de l'interface\n" in texte
     assert "# 10.0.111.0/24;siege;?;;PreProd FR" in texte and "« <zone> = PreProd FRANCE »" in texte
     referentiel = analyser_reseaux(texte, zones)
     assert referentiel.sites == ("siege",)
@@ -108,14 +111,43 @@ def test_ecriture_du_referentiel():
 def test_interfaces_peu_parlantes_et_homonymes():
     zones, _correspondances = _contextes()
     lignes = [
-        Ligne("192.168.50.0/24", "VLAN-20", "VLAN-52", "LAN", "lan", 52),
-        Ligne("10.0.20.0/22", "VLAN_20", "LAN-EP-PC", "LAN", "lan", 20),
-        Ligne("10.0.16.0/24", "Cabines", "", "LAN", "lan", 16),
+        Ligne("192.168.50.0/24", "VLAN-20", "", "LAN", "lan", 52, colonne="VLAN-20"),
+        Ligne("10.0.20.0/22", "EDF", "VLAN_20", "LAN", "lan", 20, colonne="VLAN_20"),
+        Ligne("10.0.28.0/24", "VLAN-28", "LABO_ANA", "LAN", "lan", 28, colonne="LABO_ANA"),
+        Ligne("10.1.1.0/24", "VLAN-4", "LABO-ANA", "LAN", "lan", 4, colonne="LABO-ANA"),
     ]
     texte = ecrire_reseaux(lignes, "hq", "test.conf", zones)
-    assert "VLAN-20 (VLAN-52), zone LAN — nom peu parlant ; même nom normalisé que VLAN_20\n" in texte
-    assert "— nom peu parlant (alias : LAN-EP-PC) ; même nom normalisé que VLAN-20\n" in texte
-    assert "10.0.16.0/24;hq;lan;16;Cabines  # Cabines, zone LAN\n" in texte
+    assert (
+        "192.168.50.0/24;hq;lan;52;VLAN-20  # VLAN-20, zone LAN — sans alias : nom de l'interface"
+        " ; nom peu parlant ; même nom normalisé que VLAN_20\n"
+    ) in texte
+    assert "EDF (VLAN_20), zone LAN — alias peu parlant (nom : EDF) ; même nom normalisé que VLAN-20\n" in texte
+    assert "10.0.28.0/24;hq;lan;28;LABO_ANA  # VLAN-28 (LABO_ANA), zone LAN — même nom normalisé que LABO-ANA\n" in texte
+
+
+def test_ajouter_remplace_le_nom_technique_par_l_alias():
+    zones, correspondances = _contextes()
+    lignes = reseaux_connectes(CONFIG, zones, correspondances)
+    existant = (
+        "reseau;site;zone;vlan;interface\n"
+        "10.0.0.0/24;siege;lan;11;VLAN-11  # VLAN-11 (SRV-ESX), zone LAN — ancienne zone : interco\n"
+        "10.118.131.0/24;siege;mgmt;131;IDRAC-DELL   # renommé à la main\n"
+        "192.168.1.0/24;siege;;;mgmt\n"
+        "10.210.0.0/24;gras;;210;SRV\n"
+    )
+    completion = completer_reseaux(existant, lignes, "siege", "test.conf", zones)
+    assert completion.alias_appliques == ("10.0.0.0/24 : VLAN-11 → SRV-ESX",)
+    assert completion.texte.splitlines()[1:] == [
+        "10.0.0.0/24;siege;lan;11;SRV-ESX  # VLAN-11 (SRV-ESX), zone LAN — ancienne zone : interco",
+        "10.118.131.0/24;siege;mgmt;131;IDRAC-DELL   # renommé à la main",
+        "192.168.1.0/24;siege;;;mgmt",
+        "10.210.0.0/24;gras;;210;SRV",
+        "",
+        "# Ajouté par fwclean reseaux --ajouter depuis test.conf :",
+        "172.16.255.252/30;siege;wan;777;VLAN-777  # VLAN-777, zone WAN — sans alias : nom de l'interface"
+        " ; nom peu parlant",
+    ]
+    assert any(ligne.startswith("10.118.131.0/24") for ligne in completion.differentes)
 
 
 def test_commande_reseaux(tmp_path, capsys, monkeypatch):
@@ -126,7 +158,8 @@ def test_commande_reseaux(tmp_path, capsys, monkeypatch):
     sortie = capsys.readouterr().out
     assert "Réseaux connectés : 5, zone FortiGate non traduite : 1." in sortie
     assert "à compléter : 10.0.111.0/24 (PreProd FRANCE)" in sortie
-    assert "peu parlants, à remplacer dans la colonne interface : VLAN-11, VLAN-777." in sortie
+    assert "sans alias, nom technique écrit à la place : PreProd FR, VLAN-777, mgmt." in sortie
+    assert "peu parlants, à remplacer dans la colonne interface : VLAN-131, VLAN-777." in sortie
     assert "192.168.1.0/24;siege;;;mgmt" in (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
     assert executer(["reseaux", "fw.conf", "--site", "siege"]) == 2
     assert "--ecraser" in capsys.readouterr().err

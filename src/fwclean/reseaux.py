@@ -20,7 +20,8 @@ _ENTETES = {
     "fortigate": (
         "# Réseaux directement connectés (config system interface). zone = zone FortiGate",
         "# (config system zone, zones SD-WAN) traduite par contextes.txt, vide hors zone ;",
-        "# vlan = vlanid ; interface = nom de l'interface, à remplacer à la main s'il ne dit rien.",
+        "# vlan = vlanid ; interface = alias de l'interface (set alias), à défaut son nom ;",
+        "# à remplacer à la main s'il ne dit rien.",
     ),
     "stormshield": (
         "# Réseaux des interfaces SNS à adresse statique (fichier Network). zone toujours vide",
@@ -38,6 +39,8 @@ def peu_parlant(nom: str) -> bool:
 
 @dataclass(frozen=True)
 class Ligne:
+    """`interface` : nom technique (FortiGate) ou Name (SNS) ; `colonne` : valeur écrite dans reseaux.csv."""
+
     reseau: str
     interface: str
     alias: str
@@ -45,6 +48,16 @@ class Ligne:
     zone: str | None
     vlan: int | None = None
     desactivee: bool = False
+    colonne: str | None = None
+
+    @property
+    def nom_csv(self) -> str:
+        return self.colonne or self.interface
+
+    @property
+    def sans_alias(self) -> bool:
+        """Interface FortiGate sans `set alias` : son nom technique est écrit à la place."""
+        return self.colonne is not None and not self.alias
 
     @property
     def zone_non_traduite(self) -> bool:
@@ -75,14 +88,16 @@ def reseaux_connectes(
         reseau = ipaddress.ip_network(f"{ip[0]}/{ip[1]}", strict=False)
         zone_fortigate = zone_de.get(nom)
         vlanid = (data.get("vlanid") or [""])[0]
+        alias = (data.get("alias") or [""])[0].strip()
         lignes.append(
             Ligne(
                 reseau=str(reseau),
                 interface=nom,
-                alias=(data.get("alias") or [""])[0],
+                alias=alias,
                 zone_fortigate=zone_fortigate,
                 zone=_traduire(zone_fortigate, contextes, correspondances) if zone_fortigate else None,
                 vlan=int(vlanid) if vlanid.isdigit() else None,
+                colonne=alias or nom,
             )
         )
     return tuple(lignes)
@@ -126,22 +141,24 @@ def _traduire(nom: str, contextes: Sequence[str], correspondances: Mapping[str, 
 
 def _champs(ligne: Ligne, site: str, zone: str | None = None) -> str:
     vlan = "" if ligne.vlan is None else str(ligne.vlan)
-    return f"{ligne.reseau};{site};{zone or ligne.zone or ''};{vlan};{ligne.interface}"
+    return f"{ligne.reseau};{site};{zone or ligne.zone or ''};{vlan};{ligne.nom_csv}"
 
 
-def _remarques(lignes: Sequence[Ligne], constructeur: str) -> dict[str, str]:
-    """Interface → remarque : nom peu parlant (alias en suggestion), même nom une fois normalisé."""
+def _remarques(lignes: Sequence[Ligne]) -> dict[str, str]:
+    """Interface → remarque sur la valeur écrite : sans alias, peu parlante, même nom une fois normalisé."""
     par_cle: dict[str, set[str]] = defaultdict(set)
     for ligne in lignes:
-        par_cle[normaliser_interface(ligne.interface)].add(ligne.interface)
+        par_cle[normaliser_interface(ligne.nom_csv)].add(ligne.nom_csv)
     remarques: dict[str, str] = {}
     for ligne in lignes:
         notes: list[str] = []
-        if peu_parlant(ligne.interface):
-            alias = ligne.alias if constructeur == "fortigate" else ""
-            suggestion = f" (alias : {alias})" if alias and not peu_parlant(alias) else ""
-            notes.append(f"nom peu parlant{suggestion}")
-        homonymes = sorted(par_cle[normaliser_interface(ligne.interface)] - {ligne.interface})
+        if ligne.sans_alias:
+            notes.append("sans alias : nom de l'interface")
+        if peu_parlant(ligne.nom_csv):
+            par_alias = ligne.nom_csv != ligne.interface
+            suggestion = f" (nom : {ligne.interface})" if par_alias and not peu_parlant(ligne.interface) else ""
+            notes.append(f"{'alias' if par_alias else 'nom'} peu parlant{suggestion}")
+        homonymes = sorted(par_cle[normaliser_interface(ligne.nom_csv)] - {ligne.nom_csv})
         if homonymes:
             notes.append(f"même nom normalisé que {', '.join(homonymes)}")
         if notes:
@@ -164,7 +181,7 @@ def ecrire_reseaux(
         "# non connectés (sites distants, pools VPN, IP publiques).",
         ";".join(ENTETE_INTERFACE),
     ]
-    remarques = _remarques(lignes, constructeur)
+    remarques = _remarques(lignes)
     corps: list[str] = []
     a_completer: list[str] = []
     vus: set[str] = set()
@@ -198,6 +215,7 @@ class Completion:
     differentes: tuple[str, ...]
     ecartees: tuple[str, ...]
     migrees: tuple[str, ...] = ()
+    alias_appliques: tuple[str, ...] = ()
 
 
 def completer_reseaux(
@@ -213,12 +231,14 @@ def completer_reseaux(
     - réseaux absents : ajoutés en fin de fichier ;
     - lignes du même site sans interface (ancien format) : réécrites avec zone, VLAN et
       interface de l'équipement, l'ancienne zone gardée en commentaire si elle change ;
+    - lignes FortiGate qui portent encore le nom technique de l'interface : nom remplacé par
+      l'alias (une interface renommée à la main n'est pas touchée) ;
     - en-tête à 3 ou 4 colonnes : passé à `reseau;site;zone;vlan;interface`.
     Les autres lignes, commentaires et les sites saisis à la main restent tels quels.
     """
     site = site.strip().lower()
     entrees = {entree.reseau: entree for entree in analyser_reseaux(existant, contextes).entrees}
-    remarques = _remarques(lignes, constructeur)
+    remarques = _remarques(lignes)
     lignes_texte = existant.splitlines()
     position = _positions(lignes_texte)
     ajoutees: list[str] = []
@@ -226,6 +246,7 @@ def completer_reseaux(
     differentes: list[str] = []
     ecartees: list[str] = []
     migrees: list[str] = []
+    alias_appliques: list[str] = []
     for ligne in lignes:
         origine = _origine(ligne, constructeur)
         reseau = ipaddress.ip_network(ligne.reseau, strict=False)
@@ -235,7 +256,7 @@ def completer_reseaux(
         if ligne.desactivee:
             ecartees.append(f"{ligne.reseau} ({origine}) : interface désactivée")
             continue
-        voulu = Entree(reseau=reseau, site=site, zone=ligne.zone, vlan=ligne.vlan, interface=ligne.interface)
+        voulu = Entree(reseau=reseau, site=site, zone=ligne.zone, vlan=ligne.vlan, interface=ligne.nom_csv)
         existante = entrees.get(reseau)
         commentaire = f"  # {origine}{remarques.get(ligne.interface, '')}"
         if existante is None:
@@ -251,12 +272,23 @@ def completer_reseaux(
             entrees[reseau] = voulu
             continue
         vlan_contraire = ligne.vlan is not None and existante.vlan not in (None, ligne.vlan)
-        memes = (existante.site, existante.zone, existante.interface) == (site, ligne.zone, ligne.interface)
+        if (
+            existante.interface == ligne.interface != ligne.nom_csv
+            and (existante.site, existante.zone) == (site, ligne.zone)
+            and not vlan_contraire
+            and reseau in position
+        ):
+            ancienne = re.search(r" — ancienne zone : \S+", lignes_texte[position[reseau]])
+            lignes_texte[position[reseau]] = _champs(ligne, site) + commentaire + (ancienne.group(0) if ancienne else "")
+            alias_appliques.append(f"{reseau} : {ligne.interface} → {ligne.nom_csv}")
+            entrees[reseau] = voulu
+            continue
+        memes = (existante.site, existante.zone, existante.interface) == (site, ligne.zone, ligne.nom_csv)
         if memes and not vlan_contraire:
             presentes.append(f"{reseau} ({origine})")
         else:
             differentes.append(f"{reseau} : fichier {_decrire(existante)}, interface {origine} {_decrire(voulu)}")
-    if not (ajoutees or migrees):
+    if not (ajoutees or migrees or alias_appliques):
         return Completion(existant, (), tuple(presentes), tuple(differentes), tuple(ecartees))
     _passer_en_5_colonnes(lignes_texte)
     texte = "\n".join(lignes_texte) + "\n"
@@ -264,7 +296,13 @@ def completer_reseaux(
         texte += "\n".join(["", f"# Ajouté par fwclean reseaux --ajouter depuis {source} :", *ajoutees]) + "\n"
     analyser_reseaux(texte, contextes)
     return Completion(
-        texte, tuple(ajoutees), tuple(presentes), tuple(differentes), tuple(ecartees), tuple(migrees)
+        texte,
+        tuple(ajoutees),
+        tuple(presentes),
+        tuple(differentes),
+        tuple(ecartees),
+        tuple(migrees),
+        tuple(alias_appliques),
     )
 
 

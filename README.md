@@ -94,7 +94,7 @@ uv run pytest
 uv run fwclean reseaux inbox/pare-feu.conf --site siege
 ```
 
-Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate : zone FortiGate de chaque interface traduite par `contextes.txt` (`mgmt = MGMT NETWORKS`), vide hors zone ; `vlanid` dans la colonne `vlan` ; nom de l'interface dans la colonne `interface`. Les noms qui ne disent rien (`port3`, `VLAN-16`) sont signalés avec l'alias en suggestion : les remplacer à la main dans la colonne avant de produire les scripts. `--ecraser` remplace un fichier existant.
+Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate : zone FortiGate de chaque interface traduite par `contextes.txt` (`mgmt = MGMT NETWORKS`), vide hors zone ; `vlanid` dans la colonne `vlan` ; **alias** de l'interface (`set alias`) dans la colonne `interface`, par exemple `CENTRALE DETECTION GAZ` pour `VLAN-25`, ce qui donne `HQ_NET_LAN_V25_CENTRALE-DETECTION-GAZ`. Une interface sans alias garde son nom technique, signalé en commentaire de ligne et en fin de commande ; un alias ou un nom qui ne dit rien (`VLAN-131`, `port3`) est signalé aussi. Les remplacer à la main dans la colonne avant de produire les scripts. Relancé avec `--ajouter` sur un fichier qui porte encore les noms techniques, il les remplace par l'alias, sans toucher aux noms corrigés à la main. `--ecraser` remplace un fichier existant.
 
 Sur un SNS, `uv run fwclean reseaux inbox/stormshield --site siege` lit le fichier `Network` : une ligne par interface à adresse statique, `vlan` = `Tag`, `interface` = `Name`, zone toujours vide.
 
@@ -133,4 +133,4 @@ uv run fwclean script inbox/pare-feu.conf --plan out/plan.json
 
 ## Premier passage sur un export réel
 
-Générer ou remplir `reseaux.csv` avec les réseaux et sites réels, relire la colonne `interface` (noms peu parlants), ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel ou les réseaux sans interface. Les noms proposés sont en majuscules (`SIEGE_HST_DMZ_WEB-01`). Une fois le plan relu, produire le script, l'appliquer lot par lot, puis ré-exporter et relancer l'audit. Ce passage ne sert pas à réécrire les règles.
+Générer ou remplir `reseaux.csv` avec les réseaux et sites réels, relire la colonne `interface` (interfaces sans alias, noms peu parlants), ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel ou les réseaux sans interface. Les noms proposés sont en majuscules (`SIEGE_HST_DMZ_WEB-01`). Une fois le plan relu, produire le script, l'appliquer lot par lot, puis ré-exporter et relancer l'audit. Ce passage ne sert pas à réécrire les règles.
