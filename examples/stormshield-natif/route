@@ -4,7 +4,7 @@ DefaultRoute=Routeur_Principal
 
 [StaticRoutes]
 Reseau_Gras,in->passerelle_lan
-off SIEGE_NET_LAN_UTILISATEURS,in->passerelle_lan   # route désactivée
+off SIEGE_NET_V10_LAN-USERS,in->passerelle_lan   # route désactivée
 192.168.99.0/24,in->10.0.0.1
 
 [ReverseRoutes]

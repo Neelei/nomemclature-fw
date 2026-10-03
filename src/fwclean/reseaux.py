@@ -3,28 +3,37 @@
 from __future__ import annotations
 
 import ipaddress
+import re
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from fwclean.fortigate import blocs
 from fwclean.model import ErreurLecture
-from fwclean.naming import cle_correspondance
-from fwclean.sites import ENTETE_VLAN, Entree, analyser_reseaux
+from fwclean.naming import cle_correspondance, normaliser_interface
+from fwclean.sites import ENTETE_INTERFACE, ENTETES, Entree, analyser_reseaux
 from fwclean.stormshield_natif import interfaces_natives, reseaux_interface
 
 _SECTIONS = frozenset({"system interface", "system zone", "system sdwan members"})
 
 _ENTETES = {
     "fortigate": (
-        "# Réseaux directement connectés (config system interface) ; zone = zone FortiGate",
-        "# (config system zone, zones SD-WAN) ou interface hors zone, traduite par contextes.txt.",
-        "# vlan = vlanid de l'interface.",
+        "# Réseaux directement connectés (config system interface). zone = zone FortiGate",
+        "# (config system zone, zones SD-WAN) traduite par contextes.txt, vide hors zone ;",
+        "# vlan = vlanid ; interface = nom de l'interface, à remplacer à la main s'il ne dit rien.",
     ),
     "stormshield": (
-        "# Réseaux des interfaces SNS à adresse statique (fichier Network) ; zone = nom de",
-        "# l'interface (Name), traduit par contextes.txt ; vlan = Tag de l'interface VLAN.",
+        "# Réseaux des interfaces SNS à adresse statique (fichier Network). zone toujours vide",
+        "# (pas de zones SNS) ; vlan = Tag de l'interface VLAN ; interface = Name de l'interface.",
     ),
 }
+
+# Noms d'interfaces qui ne disent rien du réseau (port3, VLAN-16, ethernet4…).
+_PEU_PARLANT = re.compile(r"(?:port|ethernet|eth|vlan|valn|wan|x|agg|ha|internal|ipsec|vti)[-_ ]?\d+", re.IGNORECASE)
+
+
+def peu_parlant(nom: str) -> bool:
+    return bool(_PEU_PARLANT.fullmatch(nom.strip()))
 
 
 @dataclass(frozen=True)
@@ -36,6 +45,10 @@ class Ligne:
     zone: str | None
     vlan: int | None = None
     desactivee: bool = False
+
+    @property
+    def zone_non_traduite(self) -> bool:
+        return self.zone_fortigate is not None and self.zone is None
 
 
 def reseaux_connectes(
@@ -68,17 +81,15 @@ def reseaux_connectes(
                 interface=nom,
                 alias=(data.get("alias") or [""])[0],
                 zone_fortigate=zone_fortigate,
-                zone=_traduire(zone_fortigate or nom, contextes, correspondances),
+                zone=_traduire(zone_fortigate, contextes, correspondances) if zone_fortigate else None,
                 vlan=int(vlanid) if vlanid.isdigit() else None,
             )
         )
     return tuple(lignes)
 
 
-def reseaux_sns(
-    texte: str, contextes: Sequence[str], correspondances: Mapping[str, str]
-) -> tuple[Ligne, ...]:
-    """Une ligne par adresse statique d'interface SNS (loopback exclue) ; zone d'après Name."""
+def reseaux_sns(texte: str) -> tuple[Ligne, ...]:
+    """Une ligne par adresse statique d'interface SNS (loopback exclue) ; interface = Name."""
     interfaces = interfaces_natives(texte)
     if not interfaces:
         raise ErreurLecture("Aucune interface ([ethernetN], [vlanN]…) dans le fichier Network.")
@@ -96,7 +107,7 @@ def reseaux_sns(
                     interface=nom,
                     alias=section,
                     zone_fortigate=None,
-                    zone=_traduire(nom, contextes, correspondances),
+                    zone=None,
                     vlan=int(tag) if tag.isdigit() else None,
                     desactivee=interface.get("State") == "0",
                 )
@@ -113,6 +124,31 @@ def _traduire(nom: str, contextes: Sequence[str], correspondances: Mapping[str, 
     return None
 
 
+def _champs(ligne: Ligne, site: str, zone: str | None = None) -> str:
+    vlan = "" if ligne.vlan is None else str(ligne.vlan)
+    return f"{ligne.reseau};{site};{zone or ligne.zone or ''};{vlan};{ligne.interface}"
+
+
+def _remarques(lignes: Sequence[Ligne], constructeur: str) -> dict[str, str]:
+    """Interface → remarque : nom peu parlant (alias en suggestion), même nom une fois normalisé."""
+    par_cle: dict[str, set[str]] = defaultdict(set)
+    for ligne in lignes:
+        par_cle[normaliser_interface(ligne.interface)].add(ligne.interface)
+    remarques: dict[str, str] = {}
+    for ligne in lignes:
+        notes: list[str] = []
+        if peu_parlant(ligne.interface):
+            alias = ligne.alias if constructeur == "fortigate" else ""
+            suggestion = f" (alias : {alias})" if alias and not peu_parlant(alias) else ""
+            notes.append(f"nom peu parlant{suggestion}")
+        homonymes = sorted(par_cle[normaliser_interface(ligne.interface)] - {ligne.interface})
+        if homonymes:
+            notes.append(f"même nom normalisé que {', '.join(homonymes)}")
+        if notes:
+            remarques[ligne.interface] = " — " + " ; ".join(notes)
+    return remarques
+
+
 def ecrire_reseaux(
     lignes: Sequence[Ligne],
     site: str,
@@ -126,28 +162,28 @@ def ecrire_reseaux(
         *_ENTETES[constructeur],
         "# Fichier réel : ignoré par git. Relire avant usage ; ajouter à la main les réseaux",
         "# non connectés (sites distants, pools VPN, IP publiques).",
-        "reseau;site;zone;vlan",
+        ";".join(ENTETE_INTERFACE),
     ]
+    remarques = _remarques(lignes, constructeur)
     corps: list[str] = []
     a_completer: list[str] = []
     vus: set[str] = set()
     for ligne in lignes:
         origine = _origine(ligne, constructeur)
-        vlan = "" if ligne.vlan is None else str(ligne.vlan)
         if ligne.reseau in vus:
             a_completer.append(f"# {ligne.reseau} : déjà déclaré, ignoré — {origine}")
             continue
-        if ligne.zone is None:
-            nom = ligne.zone_fortigate or ligne.interface
+        if ligne.zone_non_traduite:
             a_completer.append(
-                f"# {ligne.reseau};{site};?;{vlan}  — {origine} : ajouter « <zone> = {nom} » dans contextes.txt"
+                f"# {_champs(ligne, site, '?')}  — {origine} : "
+                f"ajouter « <zone> = {ligne.zone_fortigate} » dans contextes.txt"
             )
             continue
         if ligne.desactivee:
-            a_completer.append(f"# {ligne.reseau};{site};{ligne.zone};{vlan}  — {origine} : interface désactivée")
+            a_completer.append(f"# {_champs(ligne, site)}  — {origine} : interface désactivée")
             continue
         vus.add(ligne.reseau)
-        corps.append(f"{ligne.reseau};{site};{ligne.zone};{vlan}  # {origine}")
+        corps.append(f"{_champs(ligne, site)}  # {origine}{remarques.get(ligne.interface, '')}")
     texte = "\n".join([*entete, *corps, *(["", "# À compléter :", *a_completer] if a_completer else [])])
     texte += "\n"
     analyser_reseaux(texte, contextes)
@@ -161,6 +197,7 @@ class Completion:
     presentes: tuple[str, ...]
     differentes: tuple[str, ...]
     ecartees: tuple[str, ...]
+    migrees: tuple[str, ...] = ()
 
 
 def completer_reseaux(
@@ -171,54 +208,106 @@ def completer_reseaux(
     contextes: Sequence[str],
     constructeur: str = "fortigate",
 ) -> Completion:
-    """Ajoute à un reseaux.csv existant les seuls réseaux absents ; le reste du fichier est gardé tel quel."""
+    """Complète un reseaux.csv existant sans toucher aux lignes déjà renseignées.
+
+    - réseaux absents : ajoutés en fin de fichier ;
+    - lignes du même site sans interface (ancien format) : réécrites avec zone, VLAN et
+      interface de l'équipement, l'ancienne zone gardée en commentaire si elle change ;
+    - en-tête à 3 ou 4 colonnes : passé à `reseau;site;zone;vlan;interface`.
+    Les autres lignes, commentaires et les sites saisis à la main restent tels quels.
+    """
     site = site.strip().lower()
     entrees = {entree.reseau: entree for entree in analyser_reseaux(existant, contextes).entrees}
-    avec_vlan = _entete(existant) == ENTETE_VLAN
+    remarques = _remarques(lignes, constructeur)
+    lignes_texte = existant.splitlines()
+    position = _positions(lignes_texte)
     ajoutees: list[str] = []
     presentes: list[str] = []
     differentes: list[str] = []
     ecartees: list[str] = []
+    migrees: list[str] = []
     for ligne in lignes:
         origine = _origine(ligne, constructeur)
         reseau = ipaddress.ip_network(ligne.reseau, strict=False)
-        if ligne.zone is None:
-            ecartees.append(f"{ligne.reseau} ({ligne.zone_fortigate or ligne.interface}) : zone non traduite")
+        if ligne.zone_non_traduite:
+            ecartees.append(f"{ligne.reseau} ({ligne.zone_fortigate}) : zone non traduite")
             continue
         if ligne.desactivee:
             ecartees.append(f"{ligne.reseau} ({origine}) : interface désactivée")
             continue
+        voulu = Entree(reseau=reseau, site=site, zone=ligne.zone, vlan=ligne.vlan, interface=ligne.interface)
         existante = entrees.get(reseau)
-        if existante is not None:
-            vlan = "" if existante.vlan is None else str(existante.vlan)
-            actuel = f"{existante.site};{existante.zone};{vlan}"
-            voulu = f"{site};{ligne.zone};{'' if ligne.vlan is None else ligne.vlan}"
-            vlan_contraire = ligne.vlan is not None and existante.vlan not in (None, ligne.vlan)
-            if (existante.site, existante.zone) != (site, ligne.zone) or (avec_vlan and vlan_contraire):
-                differentes.append(f"{reseau} : fichier {actuel}, interface {origine} {voulu}")
-            else:
-                presentes.append(f"{reseau} ({origine})")
+        commentaire = f"  # {origine}{remarques.get(ligne.interface, '')}"
+        if existante is None:
+            ajoutees.append(_champs(ligne, site) + commentaire)
+            entrees[reseau] = voulu
             continue
-        champs = [ligne.reseau, site, ligne.zone]
-        if avec_vlan:
-            champs.append("" if ligne.vlan is None else str(ligne.vlan))
-        ajoutees.append(f"{';'.join(champs)}  # {origine}")
-        entrees[reseau] = Entree(reseau=reseau, site=site, zone=ligne.zone, vlan=ligne.vlan)
-    texte = existant
+        if existante.interface is None and existante.site == site and reseau in position:
+            ancienne = _zone_ecrite(lignes_texte[position[reseau]])
+            if ancienne and ancienne != (ligne.zone or ""):
+                commentaire += f" — ancienne zone : {ancienne}"
+            lignes_texte[position[reseau]] = _champs(ligne, site) + commentaire
+            migrees.append(f"{reseau} ({origine})")
+            entrees[reseau] = voulu
+            continue
+        vlan_contraire = ligne.vlan is not None and existante.vlan not in (None, ligne.vlan)
+        memes = (existante.site, existante.zone, existante.interface) == (site, ligne.zone, ligne.interface)
+        if memes and not vlan_contraire:
+            presentes.append(f"{reseau} ({origine})")
+        else:
+            differentes.append(f"{reseau} : fichier {_decrire(existante)}, interface {origine} {_decrire(voulu)}")
+    if not (ajoutees or migrees):
+        return Completion(existant, (), tuple(presentes), tuple(differentes), tuple(ecartees))
+    _passer_en_5_colonnes(lignes_texte)
+    texte = "\n".join(lignes_texte) + "\n"
     if ajoutees:
-        if texte and not texte.endswith("\n"):
-            texte += "\n"
         texte += "\n".join(["", f"# Ajouté par fwclean reseaux --ajouter depuis {source} :", *ajoutees]) + "\n"
-        analyser_reseaux(texte, contextes)
-    return Completion(texte, tuple(ajoutees), tuple(presentes), tuple(differentes), tuple(ecartees))
+    analyser_reseaux(texte, contextes)
+    return Completion(
+        texte, tuple(ajoutees), tuple(presentes), tuple(differentes), tuple(ecartees), tuple(migrees)
+    )
 
 
-def _entete(texte: str) -> tuple[str, ...] | None:
-    for brut in texte.splitlines():
-        ligne = brut.split("#", 1)[0].strip()
-        if ligne:
-            return tuple(champ.strip().lower() for champ in ligne.split(";"))
-    return None
+def _decrire(entree: Entree) -> str:
+    vlan = "" if entree.vlan is None else str(entree.vlan)
+    return f"{entree.site};{entree.zone or ''};{vlan};{entree.interface or ''}"
+
+
+def _donnees(brut: str) -> list[str]:
+    ligne = brut.split("#", 1)[0].strip()
+    return [champ.strip() for champ in ligne.split(";")] if ligne else []
+
+
+def _positions(lignes: Sequence[str]) -> dict:
+    """Réseau → index de sa ligne dans le fichier."""
+    positions = {}
+    for index, brut in enumerate(lignes):
+        champs = _donnees(brut)
+        if not champs:
+            continue
+        try:
+            reseau = ipaddress.ip_network(champs[0], strict=False)
+        except ValueError:
+            continue
+        positions.setdefault(reseau, index)
+    return positions
+
+
+def _zone_ecrite(brut: str) -> str:
+    champs = _donnees(brut)
+    return champs[2].lower() if len(champs) > 2 else ""
+
+
+def _passer_en_5_colonnes(lignes: list[str]) -> None:
+    """Premier en-tête remplacé par reseau;site;zone;vlan;interface (les lignes plus courtes restent lues)."""
+    for index, brut in enumerate(lignes):
+        champs = _donnees(brut)
+        if not champs:
+            continue
+        if tuple(champ.lower() for champ in champs) in ENTETES:
+            reste = brut[len(brut.split("#", 1)[0].rstrip()) :]
+            lignes[index] = ";".join(ENTETE_INTERFACE) + reste
+        return
 
 
 def _origine(ligne: Ligne, constructeur: str) -> str:

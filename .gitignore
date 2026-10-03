@@ -17,3 +17,6 @@ wheels/
 .venv
 .pytest_cache
 .ruff_cache
+
+# Sauvegardes locales de reseaux.csv avant migration.
+reseaux.csv.bak*

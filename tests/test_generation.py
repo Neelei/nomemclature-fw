@@ -5,7 +5,7 @@ import pytest
 from fwclean.cli import executer
 from fwclean.model import ErreurLecture
 from fwclean.naming import analyser_contextes, cle_correspondance
-from fwclean.reseaux import ecrire_reseaux, reseaux_connectes
+from fwclean.reseaux import Ligne, ecrire_reseaux, reseaux_connectes
 from fwclean.script import generer_script
 from fwclean.sites import analyser_reseaux
 
@@ -14,7 +14,6 @@ lan
 dmz
 wan
 mgmt = MGMT NETWORKS
-oob = mgmt
 """
 
 CONFIG = """
@@ -73,7 +72,6 @@ def _contextes():
     zones = analyser_contextes(CONTEXTES)
     correspondances = {
         cle_correspondance("MGMT NETWORKS"): "mgmt",
-        cle_correspondance("mgmt"): "oob",
     }
     return zones, correspondances
 
@@ -85,21 +83,39 @@ def test_reseaux_connectes_et_zones():
     assert (lignes["VLAN-11"].reseau, lignes["VLAN-11"].zone) == ("10.0.0.0/24", "lan")
     assert lignes["IDRAC"].zone == "mgmt"
     assert (lignes["VLAN-777"].zone_fortigate, lignes["VLAN-777"].zone) == ("WAN", "wan")
-    assert (lignes["mgmt"].zone_fortigate, lignes["mgmt"].zone) == (None, "oob")
-    assert lignes["PreProd FR"].zone is None
+    # Hors zone : zone vide, ce n'est pas un oubli.
+    assert (lignes["mgmt"].zone_fortigate, lignes["mgmt"].zone) == (None, None)
+    assert not lignes["mgmt"].zone_non_traduite
+    assert lignes["PreProd FR"].zone is None and lignes["PreProd FR"].zone_non_traduite
 
 
 def test_ecriture_du_referentiel():
     zones, correspondances = _contextes()
     texte = ecrire_reseaux(reseaux_connectes(CONFIG, zones, correspondances), "SIEGE", "test.conf", zones)
-    assert "reseau;site;zone;vlan" in texte
-    assert "10.0.0.0/24;siege;lan;11  # VLAN-11 (SRV-ESX), zone LAN" in texte
-    assert "192.168.1.0/24;siege;oob;  # mgmt, hors zone" in texte
-    assert "# 10.0.111.0/24;siege;?;" in texte and "« <zone> = PreProd FRANCE »" in texte
+    assert "reseau;site;zone;vlan;interface" in texte
+    assert (
+        "10.0.0.0/24;siege;lan;11;VLAN-11  # VLAN-11 (SRV-ESX), zone LAN — nom peu parlant (alias : SRV-ESX)"
+    ) in texte
+    assert "10.118.131.0/24;siege;mgmt;131;IDRAC  # IDRAC, zone MGMT NETWORKS\n" in texte
+    assert "192.168.1.0/24;siege;;;mgmt  # mgmt, hors zone\n" in texte
+    assert "# 10.0.111.0/24;siege;?;;PreProd FR" in texte and "« <zone> = PreProd FRANCE »" in texte
     referentiel = analyser_reseaux(texte, zones)
     assert referentiel.sites == ("siege",)
     assert len(referentiel.entrees) == 4
     assert {str(entree.reseau): entree.vlan for entree in referentiel.entrees}["10.118.131.0/24"] == 131
+
+
+def test_interfaces_peu_parlantes_et_homonymes():
+    zones, _correspondances = _contextes()
+    lignes = [
+        Ligne("192.168.50.0/24", "VLAN-20", "VLAN-52", "LAN", "lan", 52),
+        Ligne("10.0.20.0/22", "VLAN_20", "LAN-EP-PC", "LAN", "lan", 20),
+        Ligne("10.0.16.0/24", "Cabines", "", "LAN", "lan", 16),
+    ]
+    texte = ecrire_reseaux(lignes, "hq", "test.conf", zones)
+    assert "VLAN-20 (VLAN-52), zone LAN — nom peu parlant ; même nom normalisé que VLAN_20\n" in texte
+    assert "— nom peu parlant (alias : LAN-EP-PC) ; même nom normalisé que VLAN-20\n" in texte
+    assert "10.0.16.0/24;hq;lan;16;Cabines  # Cabines, zone LAN\n" in texte
 
 
 def test_commande_reseaux(tmp_path, capsys, monkeypatch):
@@ -108,9 +124,10 @@ def test_commande_reseaux(tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert executer(["reseaux", "fw.conf", "--site", "siege"]) == 0
     sortie = capsys.readouterr().out
-    assert "Réseaux connectés : 5, sans zone traduite : 1." in sortie
+    assert "Réseaux connectés : 5, zone FortiGate non traduite : 1." in sortie
     assert "à compléter : 10.0.111.0/24 (PreProd FRANCE)" in sortie
-    assert "192.168.1.0/24;siege;oob" in (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
+    assert "peu parlants, à remplacer dans la colonne interface : VLAN-11, VLAN-777." in sortie
+    assert "192.168.1.0/24;siege;;;mgmt" in (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
     assert executer(["reseaux", "fw.conf", "--site", "siege"]) == 2
     assert "--ecraser" in capsys.readouterr().err
     assert executer(["reseaux", "fw.conf", "--site", "siege", "--ecraser"]) == 0

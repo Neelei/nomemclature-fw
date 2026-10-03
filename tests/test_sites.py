@@ -1,4 +1,3 @@
-import ipaddress
 
 import pytest
 
@@ -36,10 +35,34 @@ def _localisateur(objets, contextes, referentiel):
 def test_lecture_du_referentiel(contextes, referentiel):
     assert referentiel.sites == ("gras", "siege")
     assert len(referentiel.entrees) == 7
-    assert referentiel.vlan(ipaddress.ip_network("10.211.0.0/25")) == 211
-    texte = "# commentaire\nRESEAU;Site;Zone\n10.0.0.0/8;SIEGE;LAN   # casse tolérée\n"
+    assert referentiel.interfaces == ("dmz", "gras-210", "lan-users", "serveurs", "srv", "vpn-ssl", "wan")
+    vpn = next(entree for entree in referentiel.entrees if entree.interface == "VPN_SSL")
+    assert vpn.zone is None and vpn.cle_interface == "vpn-ssl"
+    texte = "# commentaire\nRESEAU;Site;Zone;Vlan;Interface\n10.0.0.0/8;SIEGE;LAN;;Cabines   # casse tolérée\n"
     lu = analyser_reseaux(texte, contextes)
     assert lu.entrees[0].site == "siege" and lu.entrees[0].zone == "lan"
+    assert lu.entrees[0].interface == "Cabines"
+
+
+def test_ancien_format_tolere_sans_interface(contextes):
+    """Fichiers à 3 ou 4 colonnes : lus, sans interface ; zone inconnue ignorée."""
+    texte = (
+        "reseau;site;zone;vlan\n"
+        "10.0.0.0/24;hq;oob;\n"
+        "10.1.0.0/24;hq;lan;11\n"
+        "reseau;site;zone;vlan   # en-tête répété (bloc collé)\n"
+        "10.211.0.0/24;th;srv;11\n"
+    )
+    lu = analyser_reseaux(texte, contextes)
+    assert [(entree.zone, entree.vlan, entree.interface) for entree in lu.entrees] == [
+        (None, None, None),
+        ("lan", 11, None),
+        (None, 11, None),
+    ]
+    assert lu.interfaces == ()
+    assert "3 sans interface" in lu.decrire()
+    mixte = "reseau;site;zone;vlan;interface\n10.0.0.0/24;hq;lan;10;VLAN-10\n10.211.0.0/24;th;corp-wifi;20\n"
+    assert [entree.interface for entree in analyser_reseaux(mixte, contextes).entrees] == ["VLAN-10", None]
 
 
 @pytest.mark.parametrize(
@@ -47,11 +70,15 @@ def test_lecture_du_referentiel(contextes, referentiel):
     [
         "reseau,site,zone\n10.0.0.0/8,siege,lan\n",
         "reseau;site;zone\n10.0.0.0/33;siege;lan\n",
-        "reseau;site;zone\n10.0.0.0/8;siege;usine\n",
+        "reseau;site;zone;vlan;interface\n10.0.0.0/8;siege;usine;;X\n",
+        "reseau;site;zone;vlan;interface\n10.0.0.0/8;siege;;;multi\n",
+        "reseau;site;zone;vlan;interface\n10.0.0.0/8;siege;;;--\n",
+        "reseau;site;zone;vlan;interface\n10.0.0.0/8;siege;;;X;Y\n",
         "reseau;site;zone\n10.0.0.0/8;ctx;lan\n",
         "reseau;site;zone\n10.0.0.0/8;ep-fr;lan\n",
         "reseau;site;zone\n10.0.0.0/8;siege\n",
         "reseau;site;zone\n10.0.0.0/8;siege;lan\n10.0.0.0/8;gras;lan\n",
+        "reseau;site;zone;vlan;interface\n10.0.0.0/8;siege;;;A\n10.0.0.0/8;siege;;;B\n",
     ],
 )
 def test_referentiel_invalide(contextes, texte):
@@ -67,25 +94,30 @@ def test_commun():
     assert commun([]) == "ctx"
 
 
-def test_site_trouve_et_reseau_le_plus_precis(contextes, referentiel):
+def test_site_et_interface_du_reseau_le_plus_precis(contextes, referentiel):
     loc, _ = _localisateur([], contextes, referentiel)
-    objets = {
-        "zabbix": _hote("zabbix_srv", "10.1.2.10"),
-        "web": _hote("web", "10.1.1.10"),
-        "vlan": _reseau("Vlan210", "10.210.0.0", 24),
-        "large": _reseau("tout_siege", "10.1.0.0", 16),
-    }
-    assert loc.objet(objets["zabbix"]) == Localisation("siege", "lan")
-    assert loc.objet(objets["web"]) == Localisation("siege", "dmz")
-    assert loc.objet(objets["vlan"]) == Localisation("gras", "lan")
-    assert loc.objet(objets["large"]) == Localisation("siege", "lan")
+    assert loc.objet(_hote("zabbix_srv", "10.1.2.10")) == Localisation("siege", "serveurs")
+    assert loc.objet(_hote("web", "10.1.1.10")) == Localisation("siege", "dmz")
+    assert loc.objet(_reseau("Vlan210", "10.210.0.0", 24)) == Localisation("gras", "gras-210", None, 210, True)
+    assert loc.objet(_reseau("tout_siege", "10.1.0.0", 16)) == Localisation("siege", "serveurs", "lan", None, True)
+    assert loc.objet(_reseau("esx", "10.1.2.0", 25)) == Localisation("siege", "serveurs", "lan", None, False)
+    assert loc.objet(_reseau("lan", "10.0.0.0", 24)) == Localisation("siege", "lan-users", "lan", 10, True)
 
 
-def test_hors_referentiel_ctx_et_zone_par_le_nom(contextes, referentiel):
+def test_reseau_stormshield_sans_zone(contextes, referentiel):
+    inventaire = Inventaire(constructeur="stormshield", sources=(), objets=())
+    loc = Localisateur(inventaire, contextes, referentiel)
+    assert loc.objet(_reseau("lan", "10.0.0.0", 24)) == Localisation("siege", "lan-users", None, 10, True)
+
+
+def test_hors_referentiel_ou_sans_interface(contextes, referentiel):
     loc, _ = _localisateur([], contextes, referentiel)
-    assert loc.objet(_hote("srv_dmz_tiers", "192.0.2.50")) == Localisation("ctx", "dmz")
-    assert loc.objet(_hote("SIEGE_srv", "192.0.2.51")) == Localisation("ctx", "ctx")
-    assert loc.objet(_reseau("SIEGE_NET_LAN_LARGE", "10.0.0.0", 8)) == Localisation("ctx", "lan")
+    assert loc.objet(_hote("srv_dmz_tiers", "192.0.2.50")) == Localisation("ctx", "ctx")
+    assert loc.objet(_reseau("SIEGE_NET_LAN_LARGE", "10.0.0.0", 8)) == Localisation("ctx", "ctx")
+    ancien = analyser_reseaux("reseau;site;zone;vlan\n10.0.0.0/24;hq;lan;10\n", contextes)
+    loc, _ = _localisateur([], contextes, ancien)
+    assert loc.objet(_hote("pc", "10.0.0.5")) == Localisation("hq", "ctx")
+    assert loc.objet(_reseau("lan", "10.0.0.0", 24)) == Localisation("hq", "ctx", "lan", 10, True)
 
 
 def test_plage_pool_vip_et_fqdn(contextes, referentiel):
@@ -104,33 +136,41 @@ def test_plage_pool_vip_et_fqdn(contextes, referentiel):
     vip_interne = Objet(
         sorte="vip", nom="vip_lan", empreinte=("vip", "198.51.100.1", "10.1.2.5", "", "", ""), detail=""
     )
-    fqdn = Objet(sorte="fqdn", nom="gras_wan_maj", empreinte=("fqdn", "maj.example.com"), detail="")
+    vip_inconnue = Objet(
+        sorte="vip", nom="vip_lan_x", empreinte=("vip", "203.0.113.11", "192.0.2.5", "", "", ""), detail=""
+    )
+    fqdn = Objet(sorte="fqdn", nom="gras_srv_maj", empreinte=("fqdn", "maj.example.com"), detail="")
     loc, _ = _localisateur([web, vip], contextes, referentiel)
-    assert loc.objet(plage) == Localisation("siege", "vpn")
-    assert loc.objet(a_cheval) == Localisation("ctx", "lan")
+    assert loc.objet(plage) == Localisation("siege", "vpn-ssl")
+    assert loc.objet(a_cheval) == Localisation("ctx", "ctx")
     assert loc.objet(pool_a_cheval) == Localisation("siege", "multi")
     assert loc.objet(pool) == Localisation("siege", "wan")
-    assert loc.objet(vip) == Localisation("siege", "multi")
-    assert loc.objet(vip_interne) == Localisation("siege", "lan")
-    assert loc.objet(fqdn) == Localisation("gras", "wan")
+    # VIP : interface de l'adresse interne seule, jamais de l'IP externe ni du nom.
+    assert loc.objet(vip) == Localisation("siege", "dmz")
+    assert loc.objet(vip_interne) == Localisation("siege", "serveurs")
+    assert loc.objet(vip_inconnue) == Localisation("ctx", "ctx")
+    assert loc.objet(fqdn) == Localisation("gras", "srv")
 
 
 def test_groupe_multi_et_groupe_commun(contextes, referentiel):
     objets = [
         _hote("a", "10.1.2.10"),
         _hote("b", "10.1.2.11"),
+        _hote("c", "10.1.1.12"),
         _reseau("Vlan210", "10.210.0.0", 24),
         _hote("dehors", "192.0.2.9"),
-        _groupe("meme_site", "a", "b", "dehors"),
+        _groupe("meme_interface", "a", "b", "dehors"),
+        _groupe("deux_interfaces", "a", "c"),
         _groupe("deux_sites", "a", "Vlan210"),
-        _groupe("imbrique", "meme_site", "deux_sites"),
+        _groupe("imbrique", "meme_interface", "deux_sites"),
         _groupe("inconnus_dmz", "dehors"),
     ]
     loc, _ = _localisateur(objets, contextes, referentiel)
     par_nom = {objet.nom: objet for objet in objets}
-    assert loc.objet(par_nom["meme_site"]) == Localisation("siege", "lan")
-    assert loc.objet(par_nom["deux_sites"]) == Localisation("multi", "lan")
-    assert loc.objet(par_nom["imbrique"]) == Localisation("multi", "lan")
+    assert loc.objet(par_nom["meme_interface"]) == Localisation("siege", "serveurs")
+    assert loc.objet(par_nom["deux_interfaces"]) == Localisation("siege", "multi")
+    assert loc.objet(par_nom["deux_sites"]) == Localisation("multi", "multi")
+    assert loc.objet(par_nom["imbrique"]) == Localisation("multi", "multi")
     assert loc.objet(par_nom["inconnus_dmz"]) == Localisation("ctx", "dmz")
 
 
@@ -140,7 +180,7 @@ def test_groupe_cyclique_ne_boucle_pas(contextes, referentiel):
     assert loc.objet(objets[0]) == Localisation("ctx", "ctx")
 
 
-def test_audit_propose_site_et_zone(contextes, referentiel):
+def test_audit_propose_site_et_interface(contextes, referentiel):
     texte = """
 config firewall address
     edit "zabbix_srv"
@@ -167,15 +207,52 @@ end
 """
     resultat = auditer(lire_fortigate(texte, "memoire"), contextes, referentiel)
     assert [(item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("zabbix_srv", "SIEGE_HST_LAN_ZABBIX-SRV"),
+        ("zabbix_srv", "SIEGE_HST_SERVEURS_ZABBIX-SRV"),
     ]
     a_revoir = {item.nom: item for item in resultat.non_conformes if item.traitement == "revoir"}
     assert a_revoir["partenaire"].nom_propose is None
     assert a_revoir["partenaire"].commentaire == (
-        "site et zone introuvables : adresse absente de reseaux.csv"
+        "site et interface introuvables : adresse absente de reseaux.csv"
     )
     assert all(item.sorte != "regle" for item in resultat.non_conformes)
     assert "sites : GRAS, SIEGE" in resultat.referentiel
+
+
+def test_audit_ancien_format_a_revoir(contextes):
+    texte = """
+config firewall address
+    edit "pc01"
+        set subnet 10.0.0.5 255.255.255.255
+    next
+    edit "Res-LAN"
+        set subnet 10.0.0.0 255.255.255.0
+    next
+end
+config firewall addrgrp
+    edit "postes"
+        set member "pc01"
+    next
+end
+config firewall policy
+    edit 1
+        set srcaddr "postes"
+        set dstaddr "Res-LAN"
+        set action accept
+        set service "ALL"
+    next
+end
+"""
+    ancien = analyser_reseaux("reseau;site;zone;vlan\n10.0.0.0/24;hq;lan;10\n", contextes)
+    resultat = auditer(lire_fortigate(texte, "memoire"), contextes, ancien)
+    assert resultat.renommages == ()
+    revoir = {item.nom: item.commentaire for item in resultat.non_conformes if item.traitement == "revoir"}
+    attendu = (
+        "interface introuvable : réseau de reseaux.csv sans colonne interface "
+        "(vide ou ancien format à 4 colonnes)"
+    )
+    assert revoir["pc01"] == attendu
+    assert revoir["Res-LAN"] == attendu
+    assert revoir["postes"] == "interface introuvable : aucun membre sur une interface connue"
 
 
 def test_audit_sans_referentiel(contextes):
@@ -195,5 +272,5 @@ end
     assert resultat.renommages == ()
     item = next(item for item in resultat.non_conformes if item.nom == "SIEGE_HST_DMZ_WEB-01")
     assert item.traitement == "revoir"
-    assert item.commentaire == "site introuvable : adresse absente de reseaux.csv"
+    assert item.commentaire == "site et interface introuvables : adresse absente de reseaux.csv"
     assert resultat.referentiel == "aucun : objets à adresse IP signalés à revoir"

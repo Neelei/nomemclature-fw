@@ -13,7 +13,14 @@ from fwclean.charger import charger
 from fwclean.model import ErreurLecture
 from fwclean.naming import lire_contextes, lire_correspondances
 from fwclean.report import ecrire
-from fwclean.reseaux import Completion, completer_reseaux, ecrire_reseaux, reseaux_connectes, reseaux_sns
+from fwclean.reseaux import (
+    Completion,
+    completer_reseaux,
+    ecrire_reseaux,
+    peu_parlant,
+    reseaux_connectes,
+    reseaux_sns,
+)
 from fwclean.script import generer_script
 from fwclean.sites import Referentiel, lire_reseaux
 from fwclean.stormshield_natif import genre_natif
@@ -78,8 +85,9 @@ def executer(argv: list[str] | None = None) -> int:
     audit.add_argument(
         "--reseaux",
         help=(
-            "Référentiel reseau;site;zone[;vlan] qui donne le site, la zone et le VLAN des objets "
-            "(défaut : ./reseaux.csv s'il existe, sinon site CTX)"
+            "Référentiel reseau;site;zone;vlan;interface qui donne le site et l'interface des "
+            "objets, et la zone et le VLAN des réseaux (défaut : ./reseaux.csv s'il existe, "
+            "sinon objets à adresse IP à revoir)"
         ),
     )
     reseaux = sous.add_parser(
@@ -88,9 +96,10 @@ def executer(argv: list[str] | None = None) -> int:
         description=(
             "FortiGate : lit config system interface, config system zone et les zones SD-WAN, "
             "et écrit un réseau par interface qui porte une IP. SNS : lit le fichier Network "
-            "(interfaces à adresse statique). La zone (zone FortiGate ou nom d'interface SNS) "
-            "est traduite par les correspondances de contextes.txt (« mgmt = MGMT NETWORKS ») ; "
-            "la colonne vlan reprend le vlanid ou le Tag de l'interface."
+            "(interfaces à adresse statique). Colonnes reseau;site;zone;vlan;interface : la zone "
+            "FortiGate est traduite par contextes.txt (« mgmt = MGMT NETWORKS »), vide hors zone "
+            "et toujours vide pour SNS ; vlan = vlanid ou Tag ; interface = nom de l'interface "
+            "(Name côté SNS), à remplacer à la main s'il ne dit rien (port3, VLAN-16…)."
         ),
     )
     reseaux.add_argument(
@@ -106,9 +115,10 @@ def executer(argv: list[str] | None = None) -> int:
         "--ajouter",
         action="store_true",
         help=(
-            "Compléter le fichier existant : ajoute les seuls réseaux absents, garde les lignes "
-            "et commentaires existants, signale sans les modifier les réseaux déjà présents "
-            "avec un autre site, zone ou VLAN"
+            "Compléter le fichier existant : ajoute les réseaux absents, remplit zone, VLAN et "
+            "interface des lignes du même site qui n'ont pas d'interface (ancien format à 4 "
+            "colonnes), garde les autres lignes et commentaires, signale sans les modifier les "
+            "réseaux déjà présents avec un autre site, zone, VLAN ou interface"
         ),
     )
     reseaux.add_argument("--contextes", help="Fichier des zones (défaut : ./contextes.txt)")
@@ -218,7 +228,7 @@ def _reseaux(args: argparse.Namespace) -> int:
         contenu = source.read_text(encoding="utf-8-sig")
         if not source.suffix and genre_natif(source.name, contenu) == "network":
             constructeur = "stormshield"
-            lignes = reseaux_sns(contenu, contextes, correspondances)
+            lignes = reseaux_sns(contenu)
         else:
             constructeur = "fortigate"
             lignes = reseaux_connectes(contenu, contextes, correspondances)
@@ -232,30 +242,40 @@ def _reseaux(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     if completer:
-        return _afficher_completion(sortie, completion)
-    sortie.write_text(texte, encoding="utf-8")
-    sans_zone = [ligne for ligne in lignes if ligne.zone is None]
-    print(f"Référentiel : {sortie}")
-    print(f"Réseaux connectés : {len(lignes)}, sans zone traduite : {len(sans_zone)}.")
-    for ligne in sans_zone:
-        print(f"  à compléter : {ligne.reseau} ({ligne.zone_fortigate or ligne.interface})")
-    desactivees = [ligne for ligne in lignes if ligne.desactivee and ligne.zone is not None]
-    if desactivees:
-        print(f"Interfaces désactivées, laissées en commentaire : {len(desactivees)}.")
-    return 0
+        code = _afficher_completion(sortie, completion)
+    else:
+        sortie.write_text(texte, encoding="utf-8")
+        sans_zone = [ligne for ligne in lignes if ligne.zone_non_traduite]
+        print(f"Référentiel : {sortie}")
+        print(f"Réseaux connectés : {len(lignes)}, zone FortiGate non traduite : {len(sans_zone)}.")
+        for ligne in sans_zone:
+            print(f"  à compléter : {ligne.reseau} ({ligne.zone_fortigate})")
+        desactivees = [ligne for ligne in lignes if ligne.desactivee and not ligne.zone_non_traduite]
+        if desactivees:
+            print(f"Interfaces désactivées, laissées en commentaire : {len(desactivees)}.")
+        code = 0
+    peu_parlantes = sorted({ligne.interface for ligne in lignes if peu_parlant(ligne.interface)})
+    if peu_parlantes:
+        print(
+            f"Noms d'interfaces peu parlants, à remplacer dans la colonne interface : "
+            f"{', '.join(peu_parlantes)}."
+        )
+    return code
 
 
 def _afficher_completion(sortie: Path, completion: Completion) -> int:
-    if completion.ajoutees:
+    if completion.ajoutees or completion.migrees:
         sortie.write_text(completion.texte, encoding="utf-8")
     print(f"Référentiel complété : {sortie}")
     print(
-        f"Ajoutés : {len(completion.ajoutees)}, déjà présents : {len(completion.presentes)}, "
+        f"Ajoutés : {len(completion.ajoutees)}, interface complétée : {len(completion.migrees)}, "
+        f"déjà présents : {len(completion.presentes)}, "
         f"différents (non modifiés) : {len(completion.differentes)}, "
         f"écartés : {len(completion.ecartees)}."
     )
     for libelle, liste in (
         ("ajouté", completion.ajoutees),
+        ("interface complétée", completion.migrees),
         ("déjà présent", completion.presentes),
         ("différent, non modifié", completion.differentes),
         ("écarté", completion.ecartees),

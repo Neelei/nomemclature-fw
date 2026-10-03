@@ -27,9 +27,9 @@ def test_exemple_fortigate(racine, contextes, referentiel):
         "Appli metier 8443",
     }
     assert [(item.sorte, item.ancien, item.nouveau) for item in resultat.renommages] == [
-        ("groupe-adresses", "Clients web", "MULTI_GRP_LAN_CLIENTS-WEB"),
+        ("groupe-adresses", "Clients web", "MULTI_GRP_MULTI_CLIENTS-WEB"),
         ("hote", "web_dmz_backup", "SIEGE_HST_DMZ_WEB-BACKUP"),
-        ("reseau", "Vlan210", "GRAS_NET_LAN_VLAN210"),
+        ("reseau", "Vlan210", "GRAS_NET_V210_GRAS-210"),
         ("service", "Appli metier 8443", "SVC_TCP_8443_APPLI-METIER"),
     ]
     assert resultat.renommages[1].references == ("Acces web",)
@@ -39,7 +39,7 @@ def test_exemple_fortigate(racine, contextes, referentiel):
         ("groupe-adresses", "SIEGE_GRP_DMZ_WEB", ("Groupe Web",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("hote", "SIEGE_HST_DMZ_WEB-01", ("Web_DMZ",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("pool", "SIEGE_POOL_WAN_SORTANT", ("SNAT_POOL",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("reseau", "SIEGE_NET_LAN_VLAN10-UTILISATEURS", ("LAN Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("reseau", "SIEGE_NET_LAN_V10_LAN-USERS", ("LAN Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("service", "SVC_TCP_443_HTTPS", ("HTTPS custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
     ]
     assert resultat.fusions[3].contenu == "10.1.1.10/32"
@@ -51,7 +51,7 @@ def test_exemple_fortigate(racine, contextes, referentiel):
         ("groupe-adresses", "groupe-oublie"),
         ("hote", "srv-oublie"),
     ]
-    assert "SIEGE_HST_LAN_LEGACY" not in {item.nom for item in resultat.retraits}
+    assert "SIEGE_HST_LAN-USERS_LEGACY" not in {item.nom for item in resultat.retraits}
     assert "Web_DMZ" not in {item.ancien for item in resultat.renommages}
     assert "srv-oublie" not in {item.ancien for item in resultat.renommages}
 
@@ -164,7 +164,7 @@ end
     assert "SIEGE_HST_DMZ_WEB-01" not in {item.nom for item in resultat.retraits}
 
 
-def test_vlan_des_reseaux(contextes, referentiel):
+def test_reseaux_par_interface(contextes, referentiel):
     texte = """
 config system interface
     edit "VLAN-11"
@@ -215,6 +215,9 @@ end
     }
     resultat = auditer(inventaire, contextes, referentiel)
     noms = {item.ancien: item.nouveau for item in resultat.renommages}
-    assert noms["SRV-ESX [vlan11]"] == "SIEGE_NET_LAN_VLAN11-SRV-ESX"
-    assert noms["dmz-sans-vlan"] == "SIEGE_NET_DMZ_SANS-VLAN"
+    # Sous-réseaux de 10.1.0.0/16 (SERVEURS) : ancien nom en détail, VLAN de reseaux.csv seul.
+    assert noms["SRV-ESX [vlan11]"] == "SIEGE_NET_LAN_SERVEURS-SRV-ESX"
+    assert noms["sous-reseau-esx"] == "SIEGE_NET_LAN_SERVEURS-SOUS-RESEAU-ESX"
+    # Réseau même de l'interface DMZ : le nom se termine par l'interface.
+    assert noms["dmz-sans-vlan"] == "SIEGE_NET_DMZ_DMZ"
     assert "IDRAC address" not in noms

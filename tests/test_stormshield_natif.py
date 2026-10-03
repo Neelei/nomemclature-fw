@@ -7,10 +7,9 @@ import pytest
 from fwclean.audit import auditer
 from fwclean.charger import charger
 from fwclean.cli import executer
-from fwclean.model import ErreurLecture, Inventaire, Objet
-from fwclean.naming import analyser_contextes, cle_correspondance
+from fwclean.model import ErreurLecture
 from fwclean.reseaux import completer_reseaux, ecrire_reseaux, reseaux_sns
-from fwclean.sites import analyser_reseaux, appliquer_vlans
+from fwclean.sites import analyser_reseaux
 from fwclean.stormshield_natif import (
     AVERTISSEMENT_NON_GERES,
     VERIFIER_USAGE,
@@ -190,8 +189,11 @@ def test_exemple_natif(racine, contextes, referentiel):
     assert VERIFIER_USAGE in inventaire.avertissements
     assert inventaire.non_definis == ("Routeur_Principal", "global_SRV_PROXY", "mail")
     renommages = {(item.sorte, item.ancien): item.nouveau for item in resultat.renommages}
-    assert renommages[("reseau", "Res-VLAN10")] == "SIEGE_NET_LAN_VLAN10-RES"
-    assert renommages[("reseau", "Res-DMZ")] == "SIEGE_NET_DMZ_VLAN66-RES"
+    # SNS : pas de segment zone ; VLAN et interface viennent de reseaux.csv.
+    assert renommages[("reseau", "Res-DMZ")] == "SIEGE_NET_DMZ"
+    assert renommages[("reseau", "Reseau_Gras")] == "GRAS_NET_V210_GRAS-210"
+    assert renommages[("hote", "passerelle_wan")] == "SIEGE_HST_WAN_PASSERELLE"
+    assert renommages[("plage", "Plage_VPN")] == "SIEGE_RNG_VPN-SSL_PLAGE-VPN"
     assert renommages[("hote", "srv_web")] == "SIEGE_HST_DMZ_SRV-WEB"
     assert renommages[("protocole", "gre_tunnel")] == "SVC_IP_47_GRE-TUNNEL"
     natifs = {(objet.sorte, objet.nom) for objet in resultat.natifs}
@@ -211,6 +213,7 @@ def test_exemple_natif(racine, contextes, referentiel):
     assert "FQDN" in revoir["updates.example.com"]
     fusions = {(item.sorte, item.conserve): item.supprimes for item in resultat.fusions}
     assert fusions[("hote", "srv_web")] == ("Web_DMZ",)
+    assert fusions[("reseau", "SIEGE_NET_V10_LAN-USERS")] == ("Res-VLAN10",)
     assert fusions[("service", "SVC_TCP_443_HTTPS")] == ("https_ep",)
     assert fusions[("service", "rdp")] == ("rdp_admin",)
 
@@ -253,40 +256,23 @@ def test_melanges_refuses(racine):
         charger([natif, racine / "examples" / "fortigate" / "nomenclature.conf"])
 
 
-def test_vlan_par_le_referentiel(racine, contextes):
+def test_vlan_et_interface_par_le_referentiel(racine, contextes):
     referentiel = analyser_reseaux(
-        "reseau;site;zone;vlan\n"
-        "10.0.0.0/24;siege;lan;99\n"
-        "10.1.0.0/16;siege;lan;100\n"
-        "10.1.1.0/24;siege;dmz;\n"
-        "10.210.0.0/24;gras;lan;210\n"
-        "203.0.113.0/24;siege;wan\n",
+        "reseau;site;zone;vlan;interface\n"
+        "10.0.0.0/24;siege;lan;99;LAN\n"
+        "10.1.0.0/16;siege;lan;100;SERVEURS\n"
+        "10.1.1.0/24;siege;dmz;;DMZ\n"
+        "10.210.0.0/24;gras;;210;SRV_GRAS\n"
+        "203.0.113.0/24;siege;wan;;out\n",
         contextes,
     )
     assert {str(entree.reseau): entree.vlan for entree in referentiel.entrees}["203.0.113.0/24"] is None
     resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), contextes, referentiel)
     renommages = {item.ancien: item.nouveau for item in resultat.renommages}
-    assert renommages["Reseau_Gras"] == "GRAS_NET_LAN_VLAN210-RESEAU"
-    # Le VLAN de l'interface SNS prime sur le référentiel.
-    assert renommages["Res-VLAN10"] == "SIEGE_NET_LAN_VLAN10-RES"
-    assert renommages["Res-DMZ"] == "SIEGE_NET_DMZ_VLAN66-RES"
-
-
-def test_vlan_absent_de_l_entree_la_plus_precise(contextes):
-    referentiel = analyser_reseaux(
-        "reseau;site;zone;vlan\n10.1.0.0/16;siege;lan;100\n10.1.1.0/24;siege;dmz;\n10.1.2.0/24;siege;lan\n",
-        contextes,
-    )
-    inventaire = Inventaire(
-        constructeur="stormshield",
-        sources=(),
-        objets=(
-            Objet(sorte="reseau", nom="a", empreinte=(("v4", "10.1.1.0", 25),), detail=""),
-            Objet(sorte="reseau", nom="b", empreinte=(("v4", "10.1.9.0", 24),), detail=""),
-            Objet(sorte="reseau", nom="c", empreinte=("v4", "10.1.9.0", 24), detail=""),
-        ),
-    )
-    assert [objet.vlan for objet in appliquer_vlans(inventaire, referentiel).objets] == [None, 100, 100]
+    assert renommages["Reseau_Gras"] == "GRAS_NET_V210_SRV-GRAS"
+    # Le VLAN est celui de la ligne de reseaux.csv, pas le Tag de l'interface SNS (66 ici).
+    assert renommages["Res-DMZ"] == "SIEGE_NET_DMZ"
+    assert "SIEGE_NET_V99_LAN" in {fusion.nouveau_nom for fusion in resultat.fusions}
 
 
 @pytest.mark.parametrize(
@@ -297,6 +283,7 @@ def test_vlan_absent_de_l_entree_la_plus_precise(contextes):
         "reseau;site;zone;vlan\n10.0.0.0/24;siege;lan;10\n10.0.0.0/24;siege;lan;11\n",
         "reseau;site;zone\n10.0.0.0/24;siege;lan;10\n",
         "reseau;site;zone;vlan;x\n",
+        "reseau;site;zone;vlan;interface;x\n",
     ],
 )
 def test_colonne_vlan_invalide(contextes, texte):
@@ -304,18 +291,17 @@ def test_colonne_vlan_invalide(contextes, texte):
         analyser_reseaux(texte, contextes)
 
 
-def test_reseaux_sns():
-    zones = analyser_contextes("lan\nwan\nadmin\n")
-    correspondances = {cle_correspondance("out"): "wan"}
-    lignes = reseaux_sns(NETWORK, zones, correspondances)
+def test_reseaux_sns(contextes):
+    lignes = reseaux_sns(NETWORK)
     assert [(ligne.reseau, ligne.interface, ligne.zone, ligne.vlan) for ligne in lignes] == [
-        ("203.0.113.0/24", "out", "wan", None),
-        ("198.51.100.0/24", "out", "wan", None),
-        ("10.0.0.0/24", "LAN", "lan", 10),
+        ("203.0.113.0/24", "out", None, None),
+        ("198.51.100.0/24", "out", None, None),
+        ("10.0.0.0/24", "LAN", None, 10),
     ]
-    texte = ecrire_reseaux(lignes, "siege", "Network", zones, "stormshield")
-    assert "10.0.0.0/24;siege;lan;10  # LAN (vlan0)" in texte
-    assert "203.0.113.0/24;siege;wan;  # out (ethernet0)" in texte
+    texte = ecrire_reseaux(lignes, "siege", "Network", contextes, "stormshield")
+    assert "reseau;site;zone;vlan;interface" in texte
+    assert "10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)" in texte
+    assert "203.0.113.0/24;siege;;;out  # out (ethernet0)" in texte
     assert "127.0.0.0" not in texte
 
 
@@ -324,11 +310,12 @@ def test_commande_reseaux_sns(racine, tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert executer(["reseaux", str(racine / "examples" / "stormshield-natif"), "--site", "siege"]) == 0
     sortie = capsys.readouterr().out
-    assert "à compléter : 203.0.113.0/24 (out)" in sortie
+    assert "zone FortiGate non traduite : 0." in sortie
     assert "Interfaces désactivées, laissées en commentaire : 1." in sortie
     texte = (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
-    assert "10.0.0.0/24;siege;lan;10  # LAN (vlan0)" in texte
-    assert "# 10.1.1.0/24;siege;dmz;66  — DMZ (vlan1) : interface désactivée" in texte
+    assert "10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)" in texte
+    assert "203.0.113.0/24;siege;;;out  # out (ethernet0)" in texte
+    assert "# 10.1.1.0/24;siege;;66;DMZ  — DMZ (vlan1) : interface désactivée" in texte
     assert executer(["reseaux", str(tmp_path), "--site", "siege", "--ecraser"]) == 2
     assert "aucun fichier Network" in capsys.readouterr().err
 
@@ -365,8 +352,8 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
     assert "**À vérifier avant chaque suppression** : « Vérifier l'utilisation »" in rapport
 
 
-def test_reseaux_ajouter_complete_sans_ecraser(racine, tmp_path, capsys, monkeypatch):
-    (tmp_path / "contextes.txt").write_text("lan\ndmz\nwan = out\n", encoding="utf-8")
+def test_reseaux_ajouter_migre_l_ancien_format(racine, tmp_path, capsys, monkeypatch):
+    (tmp_path / "contextes.txt").write_text("lan\ndmz\nwan\n", encoding="utf-8")
     existant = (
         "# Référentiel relu à la main.\n"
         "reseau;site;zone;vlan\n"
@@ -379,12 +366,19 @@ def test_reseaux_ajouter_complete_sans_ecraser(racine, tmp_path, capsys, monkeyp
     assert executer(["reseaux", source, "--site", "siege", "--ajouter"]) == 0
     sortie = capsys.readouterr().out
     texte = (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
-    assert texte.startswith(existant)
-    assert texte.endswith("10.0.0.0/24;siege;lan;10  # LAN (vlan0)\n")
-    assert "Ajoutés : 1, déjà présents : 0, différents (non modifiés) : 1, écartés : 1." in sortie
-    assert "203.0.113.0/24 : fichier siege;dmz;, interface out (ethernet0) siege;wan;" in sortie
+    assert texte.startswith(
+        "# Référentiel relu à la main.\n"
+        "reseau;site;zone;vlan;interface\n"
+        "10.210.0.0/24;gras;lan;  # site distant ajouté à la main\n"
+        "203.0.113.0/24;siege;;;out  # out (ethernet0) — ancienne zone : dmz\n"
+    )
+    assert texte.endswith("10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)\n")
+    assert (
+        "Ajoutés : 1, interface complétée : 1, déjà présents : 0, différents (non modifiés) : 0, "
+        "écartés : 1."
+    ) in sortie
     assert executer(["reseaux", source, "--site", "siege", "--ajouter"]) == 0
-    assert "Ajoutés : 0, déjà présents : 1" in capsys.readouterr().out
+    assert "Ajoutés : 0, interface complétée : 0, déjà présents : 2" in capsys.readouterr().out
     assert (tmp_path / "reseaux.csv").read_text(encoding="utf-8") == texte
     with pytest.raises(SystemExit):
         executer(["reseaux", source, "--site", "siege", "--ajouter", "--ecraser"])
@@ -392,17 +386,35 @@ def test_reseaux_ajouter_complete_sans_ecraser(racine, tmp_path, capsys, monkeyp
     assert "--ajouter" in capsys.readouterr().err
 
 
+def test_reseaux_ajouter_ne_touche_pas_aux_lignes_renseignees(contextes):
+    lignes = reseaux_sns(NETWORK)
+    existant = (
+        "reseau;site;zone;vlan;interface\n"
+        "203.0.113.0/24;siege;;;WAN-PRINCIPAL   # renommé à la main\n"
+        "10.0.0.0/24;gras;lan;10\n"
+    )
+    completion = completer_reseaux(existant, lignes, "siege", "Network", contextes, "stormshield")
+    assert completion.migrees == ()
+    assert completion.differentes == (
+        "203.0.113.0/24 : fichier siege;;;WAN-PRINCIPAL, interface out (ethernet0) siege;;;out",
+        "10.0.0.0/24 : fichier gras;lan;10;, interface LAN (vlan0) siege;;10;LAN",
+    )
+    assert completion.texte.startswith(existant)
+    assert "198.51.100.0/24;siege;;;out" in completion.texte
+
+
 def test_reseaux_ajouter_entete_sans_vlan(contextes):
-    lignes = reseaux_sns(NETWORK, contextes, {})
+    lignes = reseaux_sns(NETWORK)
     existant = "reseau;site;zone\n10.210.0.0/24;gras;lan\n"
     completion = completer_reseaux(existant, lignes, "siege", "Network", contextes, "stormshield")
-    assert "10.0.0.0/24;siege;lan  # LAN (vlan0)" in completion.texte
+    assert completion.texte.startswith("reseau;site;zone;vlan;interface\n10.210.0.0/24;gras;lan\n")
+    assert "10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)" in completion.texte
     analyser_reseaux(completion.texte, contextes)
 
 
 def test_reseaux_ajouter_vlan_absent_de_l_interface(contextes):
-    lignes = reseaux_sns(NETWORK, contextes, {})
-    existant = "reseau;site;zone;vlan\n10.0.0.0/24;siege;lan;10\n"
+    lignes = reseaux_sns(NETWORK)
+    existant = "reseau;site;zone;vlan;interface\n10.0.0.0/24;siege;;10;LAN\n"
     sans_tag = [replace(lignes[-1], vlan=None)]
     assert completer_reseaux(existant, sans_tag, "siege", "Network", contextes).presentes
     autre_tag = [replace(lignes[-1], vlan=11)]

@@ -17,9 +17,11 @@ from fwclean.model import (
 from fwclean.naming import (
     CTX,
     ESPACE,
+    MULTI,
     PREFIXE,
     SANS_LOCALISATION,
     SORTES_SERVICE,
+    Localisation,
     est_conforme_objet,
     longueur_max,
     proposer_objet,
@@ -27,7 +29,7 @@ from fwclean.naming import (
     rendre_unique,
     signature_service,
 )
-from fwclean.sites import Localisateur, Referentiel, appliquer_vlans
+from fwclean.sites import Localisateur, Referentiel
 from fwclean.sns_natifs import est_natif
 
 _RAISONS = {
@@ -35,10 +37,16 @@ _RAISONS = {
     "reseau": "réseau absent de reseaux.csv",
     "plage": "plage absente de reseaux.csv",
     "pool": "pool absent de reseaux.csv",
-    "fqdn": "FQDN sans adresse IP, aucun site ni zone reconnu dans le nom",
+    "fqdn": "FQDN sans adresse IP, aucun site ni interface reconnu dans le nom",
     "groupe-adresses": "aucun membre localisé",
-    "vip": "IP externe et IP mappée absentes de reseaux.csv",
+    "vip": "IP mappée (adresse interne) absente de reseaux.csv",
 }
+
+_SANS_INTERFACE = {
+    "groupe-adresses": "aucun membre sur une interface connue",
+    "fqdn": "FQDN sans adresse IP, aucune interface reconnue dans le nom",
+}
+SANS_INTERFACE = "réseau de reseaux.csv sans colonne interface (vide ou ancien format à 4 colonnes)"
 
 MOTIF_ORPHELIN = "aucune reference"
 
@@ -49,8 +57,8 @@ def auditer(
     referentiel: Referentiel | None = None,
 ) -> Resultat:
     referentiel = referentiel or Referentiel()
-    inventaire = appliquer_vlans(inventaire, referentiel)
     sites = referentiel.sites
+    interfaces = referentiel.interfaces
     localisateur = Localisateur(inventaire, contextes, referentiel)
     refs = _index_references(inventaire)
 
@@ -59,8 +67,16 @@ def auditer(
 
     def conforme(objet: Objet) -> bool:
         signature = signature_service(objet.empreinte) if objet.sorte in SORTES_SERVICE else None
+        attendu = None if objet.sorte in SANS_LOCALISATION else localisateur.objet(objet)
         return est_conforme_objet(
-            objet.nom, objet.sorte, contextes, sites, limite(objet.sorte), objet.vlan, signature
+            objet.nom,
+            objet.sorte,
+            contextes,
+            sites,
+            limite(objet.sorte),
+            signature,
+            interfaces,
+            attendu,
         )
 
     def origines(objet: Objet) -> set[str]:
@@ -143,27 +159,29 @@ def auditer(
         if objet.fige:
             commentaires[(objet.sorte, objet.nom)] = objet.fige
             continue
-        if objet.sorte in SANS_LOCALISATION:
-            site = zone = None
-        else:
-            site, zone = localisateur.objet(objet)
-            if CTX in (site, zone):
-                commentaires[(objet.sorte, objet.nom)] = _commentaire(objet.sorte, site, zone)
+        localisation = None
+        if objet.sorte not in SANS_LOCALISATION:
+            localisation = localisateur.objet(objet)
+            commentaire = _commentaire(objet.sorte, localisation)
+            if commentaire:
+                commentaires[(objet.sorte, objet.nom)] = commentaire
                 continue
         prises.discard(objet.nom)
+        protege = 0
         if objet.sorte in SORTES_SERVICE:
             base = proposer_service(objet.nom, objet.empreinte, limite(objet.sorte))
         else:
             base = proposer_objet(
                 objet.nom,
                 PREFIXE[objet.sorte],
-                site,
-                zone,
+                localisation,
                 contextes,
                 limite(objet.sorte),
-                vlan=objet.vlan,
+                interfaces,
             )
-        nouveau = rendre_unique(base, prises, limite(objet.sorte))
+            if objet.sorte == "reseau" and localisation is not None:
+                protege = len(localisation.interface)
+        nouveau = rendre_unique(base, prises, limite(objet.sorte), protege)
         prises.add(nouveau)
         if nouveau == objet.nom:
             continue
@@ -284,7 +302,15 @@ def _index_references(inventaire: Inventaire) -> dict[tuple[str, str], set[str]]
     return refs
 
 
-def _commentaire(sorte: str, site: str, zone: str) -> str:
-    manques = [libelle for libelle, valeur in (("site", site), ("zone", zone)) if valeur == CTX]
-    raison = _RAISONS.get(sorte, "aucune correspondance")
-    return f"{' et '.join(manques)} introuvable{'s' if len(manques) > 1 else ''} : {raison}"
+def _commentaire(sorte: str, localisation: Localisation) -> str | None:
+    """Raison du classement « à revoir », ou None si un nom peut être proposé (pas de repli CTX)."""
+    site, interface = localisation.site, localisation.interface
+    if sorte == "reseau" and site != CTX and interface == MULTI:
+        return "interface introuvable : réseau à cheval sur plusieurs interfaces de reseaux.csv"
+    if CTX not in (site, interface):
+        return None
+    if site == CTX:
+        raison = _RAISONS.get(sorte, "aucune correspondance")
+        manques = "site et interface introuvables" if interface == CTX else "site introuvable"
+        return f"{manques} : {raison}"
+    return f"interface introuvable : {_SANS_INTERFACE.get(sorte, SANS_INTERFACE)}"

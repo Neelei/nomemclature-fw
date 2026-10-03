@@ -1,17 +1,20 @@
 # Référentiel réseaux d'exemple (adresses synthétiques).
 # Copier en reseaux.csv et remplacer par le plan d'adressage réel :
 # reseaux.csv est ignoré par git.
-# Une ligne par réseau CIDR : reseau;site;zone;vlan. Site et zone en minuscules,
-# vlan facultatif (laisser vide). La zone doit figurer dans contextes.txt ; le site
-# est libre. Le réseau le plus précis gagne : 10.1.1.10 est en DMZ, 10.1.2.10 en LAN.
-reseau;site;zone;vlan
-10.0.0.0/24;siege;lan;
-10.1.0.0/16;siege;lan;
-10.1.1.0/24;siege;dmz;
-10.8.0.0/24;siege;vpn;
-203.0.113.0/24;siege;wan;
+# Une ligne par réseau CIDR : reseau;site;zone;vlan;interface. Site et zone en minuscules.
+# zone : zone FortiGate (contextes.txt), vide hors zone et toujours vide côté Stormshield ;
+# elle ne sert qu'au nom des réseaux. vlan facultatif. interface : nom de l'interface du
+# réseau, 3e segment des objets (SIEGE_HST_DMZ_WEB-01) ; `_` et espaces deviennent `-`
+# (VPN_SSL → VPN-SSL). Le réseau le plus précis gagne : 10.1.1.10 est sur DMZ,
+# 10.1.2.10 sur SERVEURS.
+reseau;site;zone;vlan;interface
+10.0.0.0/24;siege;lan;10;LAN-USERS
+10.1.0.0/16;siege;lan;;SERVEURS
+10.1.1.0/24;siege;dmz;;DMZ
+10.8.0.0/24;siege;;;VPN_SSL
+203.0.113.0/24;siege;wan;;WAN
 
-# Site distant, ajouté à la main (réseaux non connectés au firewall audité).
-# `fwclean reseaux … --ajouter` ne touche pas à ces lignes.
-10.210.0.0/24;gras;lan;
-10.211.0.0/24;gras;dmz;211
+# Site distant, ajouté à la main (réseaux non connectés au firewall audité) :
+# l'interface est le libellé du VLAN. `fwclean reseaux … --ajouter` ne touche pas à ces lignes.
+10.210.0.0/24;gras;;210;GRAS-210
+10.211.0.0/24;gras;;211;SRV

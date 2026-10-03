@@ -12,9 +12,9 @@ Un objet utilisé seulement par une règle désactivée n'est pas orphelin.
 
 Le contenu (adresse, membres, ports, action, source, destination, service) reste celui de l'export. Le nom proposé suit [la nomenclature](nomenclature.md).
 
-Le site et la zone d'un nom proposé viennent d'abord du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, le réseau le plus précis qui la contient donne le site et la zone. Groupes, VIP et pools prennent le site et la zone communs à leurs membres, ou `MULTI`. Un réseau dont le VLAN est connu (interface VLAN FortiGate ou SNS, sinon colonne `vlan` de `reseaux.csv`) porte `VLAN{ID}` dans son détail. Services, groupes de services (`SG_{LIBELLE}`, ancien préfixe `SGRP` renommé) et calendriers n'ont ni site ni zone. Un service porte son protocole et ses ports, calculés sur son contenu, puis le libellé de son ancien nom (`HTTP-8080` → `SVC_TCP_8080_HTTP`). Le détail est dans [la nomenclature](nomenclature.md#déduction).
+Le site et l'interface d'un nom proposé viennent du réseau : l'adresse de l'objet est cherchée dans `reseaux.csv`, la ligne la plus précise qui la contient donne le site et l'interface (`HQ_HST_CABINES_PC01`). Un objet réseau prend en plus la zone FortiGate et le VLAN de cette ligne (`HQ_NET_LAN_V16_CABINES`, `HQ_NET_V16_CABINES` sans zone ou côté Stormshield) ; un sous-réseau garde son ancien nom après l'interface (`HQ_NET_LAN_V16_CABINES-IMPRIMANTES`). Groupes et pools prennent le site et l'interface communs à leurs membres, ou `MULTI` ; une VIP prend ceux de son adresse interne. Services, groupes de services (`SG_{LIBELLE}`, ancien préfixe `SGRP` renommé) et calendriers n'ont ni site ni interface. Un service porte son protocole et ses ports, calculés sur son contenu, puis le libellé de son ancien nom (`HTTP-8080` → `SVC_TCP_8080_HTTP`). Le détail est dans [la nomenclature](nomenclature.md#déduction).
 
-Un objet d'adresse sans correspondance de site ou de zone n'est **pas renommé** : il est listé à revoir, avec un commentaire qui dit ce qui manque. Compléter `reseaux.csv` puis relancer l'audit.
+Un objet d'adresse sans site ou sans interface n'est **pas renommé** : il est listé à revoir, avec un commentaire qui dit ce qui manque (adresse absente de `reseaux.csv`, ou ligne sans colonne `interface`). Compléter `reseaux.csv` puis relancer l'audit.
 
 L'outil ne renomme pas un objet qui part en fusion, ni un orphelin : le retrait ou la fusion suffit. Le rapport Markdown les montre quand même dans les noms non conformes, avec le traitement prévu.
 
@@ -72,7 +72,7 @@ L'objet conservé d'une fusion n'est pas listé comme doublon à retirer. S'il n
 
 Chevauchements de réseaux, renommage, fusion ou réordonnancement de règles, changement d'action, de NAT, d'utilisateurs ou de certificats, poussée vers l'équipement. Le premier passage sur les exports réels sert à compléter `reseaux.csv` et à ajuster [`contextes.txt`](../contextes.txt), pas à réécrire les règles.
 
-Un objet dont le nom est conforme mais dont le site ou la zone ne correspond pas à son adresse n'est pas signalé : la conformité porte sur la forme du nom.
+Quand le site et l'interface d'un objet sont connus, un nom qui porte un autre site ou une autre interface (ou, pour un réseau, une autre zone ou un autre VLAN) n'est pas conforme et est renommé. Un objet non localisable n'est jugé que sur sa forme.
 
 ## Exports lus
 
@@ -80,14 +80,17 @@ Les fichiers réels se déposent dans `inbox/` (ignoré par git). Les exemples d
 
 ### Référentiel réseaux
 
-`reseaux.csv` à la racine (ignoré par git), ou le fichier donné par `--reseaux`. Format `reseau;site;zone` ou `reseau;site;zone;vlan`, un CIDR par ligne, site et zone en minuscules, vlan vide permis, commentaires `#` acceptés :
+`reseaux.csv` à la racine (ignoré par git), ou le fichier donné par `--reseaux`. Format `reseau;site;zone;vlan;interface`, un CIDR par ligne, site et zone en minuscules, zone et vlan vides permis, commentaires `#` acceptés :
 
 ```text
-reseau;site;zone;vlan
-10.1.0.0/16;siege;lan;
-10.1.1.0/24;siege;dmz;12
-10.210.0.0/24;gras;lan;210
+reseau;site;zone;vlan;interface
+10.1.0.0/16;siege;lan;;SERVEURS
+10.1.1.0/24;siege;dmz;12;DMZ
+192.168.1.0/24;siege;;;mgmt
+10.210.0.0/24;gras;;210;SRV
 ```
+
+La zone est la zone FortiGate traduite par `contextes.txt`, vide hors zone et toujours vide pour Stormshield ; elle ne sert qu'au nom des réseaux. L'ancien format `reseau;site;zone;vlan` reste lu, mais ses réseaux n'ont pas d'interface : leurs objets sont à revoir jusqu'à la migration (`--ajouter`, ci-dessous).
 
 Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv), ou le générer depuis une sauvegarde FortiGate :
 
@@ -95,9 +98,11 @@ Partir de [`reseaux.exemple.csv`](../reseaux.exemple.csv), ou le générer depui
 fwclean reseaux inbox/pare-feu.conf --site siege
 ```
 
-La commande lit `config system interface` (une ligne par interface qui porte une IP), `config system zone` et les zones SD-WAN (`config system sdwan` → `members`). La zone FortiGate de l'interface, ou le nom de l'interface si elle n'est dans aucune zone, est traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`, `oob = mgmt`) ; un nom qui est déjà une zone (`LAN` → `lan`) n'a pas besoin de correspondance. Une interface sans zone traduite est écrite en commentaire, à compléter. Le fichier existant n'est remplacé qu'avec `--ecraser`.
+La commande lit `config system interface` (une ligne par interface qui porte une IP), `config system zone` et les zones SD-WAN (`config system sdwan` → `members`). La colonne `interface` reçoit le nom de l'interface. La zone FortiGate de l'interface est traduite par les correspondances de `contextes.txt` (`mgmt = MGMT NETWORKS`) ; un nom qui est déjà une zone (`LAN` → `lan`) n'a pas besoin de correspondance. Une interface hors zone a une zone vide. Une interface dont la zone FortiGate n'est pas traduite est écrite en commentaire, à compléter. Le fichier existant n'est remplacé qu'avec `--ecraser`.
 
-Sur un SNS, la même commande lit le fichier natif `Network` (le fichier ou le dossier qui le contient). Le SNS n'a pas de zones : c'est le nom de l'interface (`Name=`) qui est traduit par `contextes.txt` (`wan = FObouygues, FOFreePro, INTERCO-WAN-EP`, `vpn = ssl.root, VTI_FRSI_THUS`, `oob = mgmt, HA`).
+Les noms d'interfaces qui ne disent rien (`port3`, `VLAN-16`, `VALN-46`) sont signalés en commentaire de la ligne et en fin de commande, avec l'alias FortiGate en suggestion (`VLAN-16 (CABINES), zone LAN — nom peu parlant (alias : CABINES)`). Deux interfaces au même nom normalisé (`VLAN-20` et `VLAN_20`) le sont aussi. Remplacer ces noms à la main dans la colonne `interface` **avant** de produire les scripts : c'est ce nom qui entre dans les objets.
+
+Sur un SNS, la même commande lit le fichier natif `Network` (le fichier ou le dossier qui le contient). Le SNS n'a pas de zones : la zone reste vide, l'interface est le `Name=` de l'interface (`FObouygues`, `HA`, `VTI_FRSI_THUS`).
 
 **Compléter sans écraser.** Avec `--ajouter`, la commande complète le `reseaux.csv` existant au lieu de le refuser :
 
@@ -105,30 +110,31 @@ Sur un SNS, la même commande lit le fichier natif `Network` (le fichier ou le d
 fwclean reseaux inbox/stormshield --site siege --ajouter
 ```
 
-- seuls les réseaux absents du fichier sont ajoutés, en fin de fichier, sous un commentaire `# Ajouté par fwclean reseaux --ajouter depuis Network :` ;
-- les lignes et commentaires existants restent tels quels, y compris les ajouts manuels ;
-- un réseau déjà présent avec le même site et la même zone est compté « déjà présent » ; un VLAN absent de l'interface ne contredit pas celui du fichier ;
-- un réseau déjà présent avec un autre site, une autre zone ou un autre VLAN est affiché « différent, non modifié » : à trancher à la main ;
-- une interface désactivée ou sans zone traduite est « écartée » et n'est pas écrite ;
+- les réseaux absents du fichier sont ajoutés, en fin de fichier, sous un commentaire `# Ajouté par fwclean reseaux --ajouter depuis Network :` ;
+- **migration de l'ancien format** : une ligne du même site sans interface (fichier à 4 colonnes) est réécrite avec la zone, le VLAN et l'interface de l'équipement, et l'en-tête passe à `reseau;site;zone;vlan;interface`. Si la zone change (`oob` → vide, par exemple), l'ancienne reste en commentaire de la ligne (« ancienne zone : oob ») ;
+- les autres lignes et commentaires restent tels quels, y compris les ajouts manuels et les lignes d'un autre site ;
+- un réseau déjà présent avec le même site, la même zone et la même interface est compté « déjà présent » ; un VLAN absent de l'interface ne contredit pas celui du fichier ;
+- un réseau déjà présent avec un autre site, une autre zone, un autre VLAN ou une autre interface (renommée à la main, par exemple) est affiché « différent, non modifié » : à trancher à la main ;
+- une interface désactivée ou dont la zone FortiGate n'est pas traduite est « écartée » et n'est pas écrite ;
 - la commande se relance sans risque : un second passage n'ajoute rien.
 
 `--ajouter` et `--ecraser` s'excluent. Sans fichier existant, `--ajouter` l'écrit comme d'habitude.
 
-**Ajouter un site distant à la main.** Les réseaux non connectés au firewall audité (sites distants, pools VPN, IP publiques) s'écrivent à la main, une ligne `reseau;site;zone;vlan` par réseau :
+**Ajouter un site distant à la main.** Les réseaux non connectés au firewall audité (sites distants, pools VPN, IP publiques) s'écrivent à la main, une ligne `reseau;site;zone;vlan;interface` par réseau. L'interface est le libellé du VLAN sur le site distant, la zone reste vide :
 
 ```text
 # Site distant de Gras (hors firewall audité)
-10.210.0.0/24;gras;lan;
-10.211.0.0/24;gras;dmz;211
+10.210.0.0/24;gras;;210;SRV
+10.211.0.0/24;gras;;211;POSTE-FILAIRE
 ```
 
-Un nouveau site est un ajout libre : il suffit de l'écrire en minuscules (lettres et chiffres, ni `ctx` ni `multi`), il devient alors un site valide pour la nomenclature. La zone, elle, doit figurer dans [`contextes.txt`](../contextes.txt) : l'y ajouter d'abord si besoin. Le `vlan` est facultatif (champ vide). Ces lignes survivent à `fwclean reseaux --ajouter`, qui ne réécrit jamais le fichier.
+Un nouveau site est un ajout libre : il suffit de l'écrire en minuscules (lettres et chiffres, ni `ctx` ni `multi`), il devient alors un site valide pour la nomenclature. Une zone, si on en met une, doit figurer dans [`contextes.txt`](../contextes.txt). Le `vlan` est facultatif (champ vide). Ces lignes survivent à `fwclean reseaux --ajouter`, qui ne réécrit que les lignes de son site sans interface.
 
-Une ligne par adresse statique d'interface (`AddressN`/`MaskN`, `IPv6AddressN`/`IPv6MaskN`), loopback exclue ; les interfaces en `dhcp` n'apparaissent pas. La zone vient du nom de l'interface (`Name=`), traduit par `contextes.txt` (ajouter par exemple `wan = FOFreePro, FObouygues`) ; sinon la ligne est écrite en commentaire. Une interface désactivée (`State=0`) est aussi laissée en commentaire. `vlan` reprend le `Tag=` de l'interface VLAN.
+Côté SNS : une ligne par adresse statique d'interface (`AddressN`/`MaskN`, `IPv6AddressN`/`IPv6MaskN`), loopback exclue ; les interfaces en `dhcp` n'apparaissent pas. Une interface désactivée (`State=0`) est laissée en commentaire. `vlan` reprend le `Tag=` de l'interface VLAN.
 
-La colonne `vlan` (facultative) donne le VLAN d'un réseau quand la configuration auditée ne le connaît pas ; `fwclean reseaux` la remplit avec le `vlanid` FortiGate ou le `Tag` SNS. Voir [la nomenclature](nomenclature.md#réseaux-et-vlan).
+La colonne `vlan` donne le segment `V{ID}` des réseaux ; `fwclean reseaux` la remplit avec le `vlanid` FortiGate ou le `Tag` SNS. Le VLAN vu dans la configuration auditée ou dans l'ancien nom n'est pas utilisé. Voir [la nomenclature](nomenclature.md#réseaux).
 
-Un réseau invalide, une zone absente de `contextes.txt`, un VLAN invalide ou un même réseau déclaré avec deux sites arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et les objets d'adresse non conformes sont tous listés à revoir.
+Un réseau invalide, une zone absente de `contextes.txt` (format à 5 colonnes), un VLAN ou une interface invalides, ou un même réseau déclaré deux fois différemment arrêtent l'audit avec un message. Sans référentiel, l'audit tourne et les objets d'adresse non conformes sont tous listés à revoir.
 
 ### FortiGate
 
@@ -173,7 +179,7 @@ Un fichier absent sur le SNS fait échouer `tar` : le retirer de la liste et rel
 | `servicegroup` | groupes de services, même forme | oui |
 | `router` | objets routeur (passerelles) | reconnu, non géré (signalé dans les avertissements) |
 | `Filter` | slot de filtrage actif : `[NAT]` et `[Filter]`, une règle par ligne | oui ; un dossier `Filter/` de slots aussi (règles préfixées par le nom du slot) |
-| `Network` | interfaces (`[ethernetN]`, `[vlanN]` avec `Tag=`, …) | pour le VLAN des réseaux et `fwclean reseaux` |
+| `Network` | interfaces (`[ethernetN]`, `[vlanN]` avec `Tag=`, …) | pour `fwclean reseaux` |
 | `route` | `DefaultRoute=`, `[StaticRoutes]` (`[off ]DEST,IFACE->PASSERELLE`) | oui ; `[ReverseRoutes]` ignoré |
 | `global/` | objets et politique globaux poussés par SMC | reconnu, non géré |
 
@@ -203,7 +209,7 @@ Les noms sont comparés par espace : le service `router` (`520/udp`) est natif, 
 
 **Noms DNS.** Un objet `[Fqdn]` ou un hôte `resolve=dynamic` porte le nom DNS résolu par le SNS : il n'est jamais renommé, il est listé à revoir avec ce motif.
 
-**VLAN.** Une interface `[vlanN]` à adresse statique donne son `Tag` aux réseaux qu'elle contient. Sur un SNS de sortie Internet dont les VLAN internes sont en `dhcp` ou routés vers un autre firewall, le VLAN vient de la colonne `vlan` de `reseaux.csv` (générée depuis le FortiGate).
+**VLAN et interface.** Le VLAN et l'interface d'un réseau SNS viennent de `reseaux.csv` : `fwclean reseaux` sur le fichier `Network` y écrit le `Tag` et le `Name` des interfaces à adresse statique. Sur un SNS de sortie Internet dont les VLAN internes sont en `dhcp` ou routés vers un autre firewall, ce sont les lignes générées depuis le FortiGate qui donnent VLAN et interface. Les réseaux SNS n'ont jamais de segment zone.
 
 Pas d'écriture vers le SNS pour l'instant : le plan se relit puis s'applique à la main (ou dans SMC).
 
@@ -228,7 +234,7 @@ Une sauvegarde `.na` est chiffrée : elle n'est pas lue. Autre possibilité que 
 
 ```text
 host,SIEGE_HST_DMZ_WEB-01,10.1.1.10,,,,"Serveur web"
-network,SIEGE_NET_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
+network,SIEGE_NET_V10_LAN-USERS,10.0.0.0,255.255.255.0,,,"LAN"
 service,SVC_TCP_443_HTTPS,tcp,443,,,"HTTPS"
 group,SIEGE_GRP_DMZ_WEB,"SIEGE_HST_DMZ_WEB-01",""
 time,SCH_BUREAU,08:00-18:00,monday-friday,,""
@@ -293,6 +299,8 @@ fwclean script inbox/pare-feu.conf --plan out/plan.json \
 
 Les scripts sont rejoués sur la sauvegarde comme FortiOS le ferait. `deja-applique.txt` liste les commandes refusées, `02b-rattrapage.txt` contient ce qui reste des renommages et fusions, et `03-retraits.txt` est récrit pour cet état. 01 et 02 ne sont pas récrits. La simulation suppose que l'équipement partait de la sauvegarde donnée : en cas de doute, recharger cette sauvegarde et rejouer les scripts à jour.
 
+**Changement de convention.** Quand la convention change après un premier passage (passage de la zone à l'interface, par exemple), ne pas renommer une seconde fois par-dessus les noms déjà appliqués : recharger la sauvegarde d'origine sur l'équipement, puis coller les lots régénérés sans `--deja-applique` (`out/fortigate/rejeu-depuis-sauvegarde/`). L'audit reconnaît malgré tout les anciens noms (`HQ_NET_LAN_VLAN11-RES`, `HQ_GRP_LAN_…`) et ne recopie ni l'ancienne zone ni le VLAN dans le détail.
+
 Ordre : 01, puis 02, puis 03, un lot à la fois, avec sauvegarde avant et test des flux après. Ré-exporter la configuration et relancer l'audit entre deux passes. Si le firewall est piloté par FortiManager, appliquer dans FortiManager.
 
 ## Sorties
@@ -313,7 +321,7 @@ Clés du plan :
 | `renommages` | `sorte`, `ancien`, `nouveau`, `references` |
 | `fusions` | `sorte`, `contenu`, `conserve`, `nouveau_nom`, `supprimes`, `references_reecrites` |
 | `retraits` | `sorte`, `nom`, `motif` (`aucune reference`) ; vide si les retraits sont suspendus |
-| `a_revoir` | `sorte`, `nom`, `commentaire` : objets non conformes sans nom proposé (site ou zone introuvable, nom DNS SNS) |
+| `a_revoir` | `sorte`, `nom`, `commentaire` : objets non conformes sans nom proposé (site ou interface introuvable, nom DNS SNS) |
 
 `nouveau_nom` est le nom de l'objet conservé après un éventuel renommage. Il est identique à `conserve` quand le nom était déjà conforme.
 

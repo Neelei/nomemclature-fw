@@ -4,7 +4,7 @@
 # Objets natifs SNS (base par défaut, jamais renommés ni retirés) : IANA_v6_doc, syslog, rdp.
 [Network]
 Res-VLAN10=10.0.0.0/24      # LAN utilisateurs
-SIEGE_NET_LAN_UTILISATEURS=10.0.0.0/255.255.255.0
+SIEGE_NET_V10_LAN-USERS=10.0.0.0/255.255.255.0
 Reseau_Gras=10.210.0.0/24
 Res-DMZ=10.1.1.0/24
 IANA_v6_doc=2001:db8::/32

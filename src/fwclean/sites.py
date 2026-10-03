@@ -1,13 +1,12 @@
-"""Référentiel réseaux (reseaux.csv) et déduction site + zone des objets."""
+"""Référentiel réseaux (reseaux.csv) et déduction site + interface des objets."""
 
 from __future__ import annotations
 
 import ipaddress
 import re
 from collections.abc import Collection, Iterable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NamedTuple
 
 from fwclean.model import ErreurLecture, Inventaire, Objet
 from fwclean.naming import (
@@ -15,7 +14,9 @@ from fwclean.naming import (
     ESPACE,
     MULTI,
     RESERVES,
+    Localisation,
     normaliser_chaine,
+    normaliser_interface,
     zone_connue,
 )
 
@@ -24,12 +25,8 @@ Reseau = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 ENTETE = ("reseau", "site", "zone")
 ENTETE_VLAN = (*ENTETE, "vlan")
-
-
-class Localisation(NamedTuple):
-    site: str
-    zone: str
-
+ENTETE_INTERFACE = (*ENTETE_VLAN, "interface")
+ENTETES = (ENTETE, ENTETE_VLAN, ENTETE_INTERFACE)
 
 INCONNUE = Localisation(CTX, CTX)
 
@@ -38,8 +35,14 @@ INCONNUE = Localisation(CTX, CTX)
 class Entree:
     reseau: Reseau
     site: str
-    zone: str
+    zone: str | None
     vlan: int | None = None
+    # Nom tel qu'écrit dans reseaux.csv (VLAN-16, LABO_ANA…) ; None : colonne absente ou vide.
+    interface: str | None = None
+
+    @property
+    def cle_interface(self) -> str | None:
+        return normaliser_interface(self.interface) if self.interface else None
 
 
 @dataclass(frozen=True)
@@ -56,29 +59,44 @@ class Referentiel:
     def sites(self) -> tuple[str, ...]:
         return tuple(sorted({entree.site for entree in self.entrees}))
 
-    def localiser(self, debut: Adresse, fin: Adresse | None = None) -> Localisation | None:
+    @property
+    def interfaces(self) -> tuple[str, ...]:
+        """Interfaces normalisées (minuscules, `-`) : segment interface autorisé dans les noms."""
+        return tuple(sorted({entree.cle_interface for entree in self.entrees if entree.cle_interface}))
+
+    @property
+    def sans_interface(self) -> tuple[Entree, ...]:
+        return tuple(entree for entree in self.entrees if entree.interface is None)
+
+    def entree(self, debut: Adresse, fin: Adresse | None = None) -> Entree | None:
         """Réseau le plus précis contenant toute la plage [debut, fin]."""
         fin = debut if fin is None else fin
         for entree in self._tries:
             if entree.reseau.version != debut.version or entree.reseau.version != fin.version:
                 continue
             if debut in entree.reseau and fin in entree.reseau:
-                return Localisation(entree.site, entree.zone)
+                return entree
         return None
 
-    def vlan(self, reseau: Reseau) -> int | None:
-        """VLAN de l'entrée la plus précise qui contient le réseau (None si elle n'en a pas)."""
-        for entree in self._tries:
-            if entree.reseau.version == reseau.version and reseau.subnet_of(entree.reseau):
-                return entree.vlan
-        return None
+    def localiser(self, debut: Adresse, fin: Adresse | None = None) -> Localisation | None:
+        entree = self.entree(debut, fin)
+        if entree is None:
+            return None
+        return Localisation(entree.site, entree.cle_interface or CTX)
 
     def decrire(self) -> str:
         if not self.entrees:
             return "aucun : objets à adresse IP signalés à revoir"
         sites = ", ".join(site.upper() for site in self.sites)
         origine = f"{self.source} — " if self.source else ""
-        return f"{origine}{len(self.entrees)} réseaux, sites : {sites}"
+        texte = f"{origine}{len(self.entrees)} réseaux, sites : {sites}"
+        manquantes = len(self.sans_interface)
+        if manquantes:
+            texte += (
+                f" ; {manquantes} sans interface (colonne vide ou ancien format à 4 colonnes) : "
+                "objets de ces réseaux à revoir"
+            )
+        return texte
 
 
 def lire_reseaux(chemin: Path, contextes: Sequence[str]) -> Referentiel:
@@ -90,7 +108,13 @@ def lire_reseaux(chemin: Path, contextes: Sequence[str]) -> Referentiel:
 
 
 def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = None) -> Referentiel:
-    """Lit `reseau;site;zone` ou `reseau;site;zone;vlan` (vlan vide permis). `#` : commentaire."""
+    """Lit `reseau;site;zone;vlan;interface` ; `#` : commentaire.
+
+    Zone, VLAN et interface peuvent être vides. Les anciens formats `reseau;site;zone` et
+    `reseau;site;zone;vlan`, et les lignes plus courtes que l'en-tête, restent lus : l'interface
+    y manque, les objets de ces réseaux sont donc à revoir, et une zone absente de
+    contextes.txt y est ignorée (elle ne sert plus qu'au nom des réseaux).
+    """
     entrees: dict[Reseau, Entree] = {}
     entete: tuple[str, ...] | None = None
     for numero, brut in enumerate(texte.splitlines(), start=1):
@@ -98,20 +122,25 @@ def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = 
         if not ligne:
             continue
         champs = [champ.strip() for champ in ligne.split(";")]
+        en_tete = tuple(champ.lower() for champ in champs)
         if entete is None:
-            entete = tuple(champ.lower() for champ in champs)
-            if entete not in {ENTETE, ENTETE_VLAN}:
+            if en_tete not in ENTETES:
                 raise ErreurLecture(
-                    "reseaux.csv : en-tête attendu « reseau;site;zone » ou "
-                    f"« reseau;site;zone;vlan », lu « {ligne} »."
+                    "reseaux.csv : en-tête attendu « reseau;site;zone;vlan;interface » "
+                    f"(ou « reseau;site;zone;vlan », « reseau;site;zone »), lu « {ligne} »."
                 )
+            entete = en_tete
             continue
-        if len(champs) != len(entete) and not (entete == ENTETE_VLAN and len(champs) == 3):
+        if en_tete in ENTETES:
+            continue
+        if not len(ENTETE) <= len(champs) <= len(entete):
             raise ErreurLecture(
                 f"reseaux.csv ligne {numero} : {len(entete)} champs attendus ({';'.join(entete)})."
             )
-        brut_reseau, site, zone = champs[0], champs[1].lower(), champs[2].lower()
-        brut_vlan = champs[3] if len(champs) > 3 else ""
+        ancien_format = len(champs) < len(ENTETE_INTERFACE)
+        champs += [""] * (len(ENTETE_INTERFACE) - len(champs))
+        brut_reseau, site, zone, brut_vlan, interface = champs
+        site, zone = site.lower(), zone.lower()
         if brut_vlan and not (brut_vlan.isdigit() and 1 <= int(brut_vlan) <= 4094):
             raise ErreurLecture(f"reseaux.csv ligne {numero} : VLAN invalide « {brut_vlan} » (1 à 4094).")
         vlan = int(brut_vlan) if brut_vlan else None
@@ -121,31 +150,23 @@ def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = 
             raise ErreurLecture(f"reseaux.csv ligne {numero} : réseau invalide « {brut_reseau} ».") from exc
         if not re.fullmatch(r"[a-z0-9]+", site) or site in RESERVES:
             raise ErreurLecture(f"reseaux.csv ligne {numero} : site invalide « {champs[1]} ».")
-        if not zone_connue(zone, contextes) or zone in RESERVES:
-            raise ErreurLecture(
-                f"reseaux.csv ligne {numero} : zone « {champs[2]} » absente de contextes.txt."
-            )
+        if zone and (not zone_connue(zone, contextes) or zone in RESERVES):
+            if not ancien_format:
+                raise ErreurLecture(
+                    f"reseaux.csv ligne {numero} : zone « {champs[2]} » absente de contextes.txt."
+                )
+            zone = ""
+        if interface and normaliser_interface(interface) in {"", *RESERVES}:
+            raise ErreurLecture(f"reseaux.csv ligne {numero} : interface invalide « {interface} ».")
+        entree = Entree(reseau=reseau, site=site, zone=zone or None, vlan=vlan, interface=interface or None)
         existante = entrees.get(reseau)
-        if existante is not None and (existante.site, existante.zone, existante.vlan) != (site, zone, vlan):
+        if existante is not None and existante != entree:
             raise ErreurLecture(
-                f"reseaux.csv ligne {numero} : {reseau} déjà déclaré avec un autre site, zone ou VLAN."
+                f"reseaux.csv ligne {numero} : {reseau} déjà déclaré avec un autre site, zone, VLAN "
+                "ou interface."
             )
-        entrees[reseau] = Entree(reseau=reseau, site=site, zone=zone, vlan=vlan)
+        entrees[reseau] = entree
     return Referentiel(entrees=tuple(entrees.values()), source=source)
-
-
-def appliquer_vlans(inventaire: Inventaire, referentiel: Referentiel) -> Inventaire:
-    """Réseaux sans VLAN dans la config : VLAN de l'entrée la plus précise du référentiel."""
-    if not any(entree.vlan is not None for entree in referentiel.entrees):
-        return inventaire
-    objets = []
-    for objet in inventaire.objets:
-        if objet.sorte == "reseau" and objet.vlan is None:
-            vlans = {referentiel.vlan(reseau) for reseau in _reseaux(objet)}
-            if len(vlans) == 1 and None not in vlans:
-                objet = replace(objet, vlan=vlans.pop())
-        objets.append(objet)
-    return replace(inventaire, objets=tuple(objets))
 
 
 def commun(valeurs: Iterable[str]) -> str:
@@ -162,28 +183,38 @@ def fusionner(localisations: Iterable[Localisation]) -> Localisation:
     liste = list(localisations)
     return Localisation(
         commun(loc.site for loc in liste),
-        commun(loc.zone for loc in liste),
+        commun(loc.interface for loc in liste),
     )
 
 
-def depuis_nom(nom: str, contextes: Sequence[str], sites: Collection[str]) -> Localisation:
-    """Premier jeton site connu et premier jeton zone connu du nom."""
-    site = zone = None
-    for jeton in normaliser_chaine(nom).split("-"):
-        if site is None and jeton in sites:
-            site = jeton
-        elif zone is None and zone_connue(jeton, contextes) and jeton not in RESERVES:
-            zone = jeton
-    return Localisation(site or CTX, zone or CTX)
+def depuis_nom(nom: str, sites: Collection[str], interfaces: Collection[str]) -> Localisation:
+    """Premier site connu et interface connue cités dans le nom (segment entier, sinon suite de jetons)."""
+    jetons = normaliser_chaine(nom).split("-")
+    site = next((jeton for jeton in jetons if jeton in sites), None)
+    segments = [normaliser_chaine(partie) for partie in nom.split("_")]
+    interface = next((segment for segment in segments if segment in interfaces), None)
+    if interface is None:
+        for candidate in sorted(interfaces, key=lambda valeur: (-len(valeur), valeur)):
+            cherches = candidate.split("-")
+            if any(jetons[i : i + len(cherches)] == cherches for i in range(len(jetons))):
+                interface = candidate
+                break
+    return Localisation(site or CTX, interface or CTX)
 
 
 class Localisateur:
-    """Site + zone de chaque objet d'un inventaire, calculés une fois."""
+    """Site + interface de chaque objet d'un inventaire, calculés une fois.
+
+    Les réseaux reçoivent en plus la zone (jamais côté Stormshield), le VLAN et `exact`
+    de l'entrée de reseaux.csv qui les contient.
+    """
 
     def __init__(self, inventaire: Inventaire, contextes: Sequence[str], referentiel: Referentiel):
         self.contextes = contextes
         self.referentiel = referentiel
         self.sites = frozenset(referentiel.sites)
+        self.interfaces = frozenset(referentiel.interfaces)
+        self.avec_zone = inventaire.constructeur != "stormshield"
         self._adresses = {
             objet.nom: objet for objet in inventaire.objets if ESPACE[objet.sorte] == "adresse"
         }
@@ -193,7 +224,7 @@ class Localisateur:
         objet = self._adresses.get(nom)
         if objet is not None:
             return self.objet(objet)
-        return depuis_nom(nom, self.contextes, self.sites)
+        return depuis_nom(nom, self.sites, self.interfaces)
 
     def objet(self, objet: Objet) -> Localisation:
         cle = (objet.sorte, objet.nom)
@@ -205,50 +236,65 @@ class Localisateur:
         return resultat
 
     def _calculer(self, objet: Objet) -> Localisation:
-        par_nom = depuis_nom(objet.nom, self.contextes, self.sites)
-        if objet.sorte in {"hote", "reseau", "plage", "pool"}:
+        if objet.sorte == "reseau":
+            return self._reseau(objet)
+        if objet.sorte in {"hote", "plage", "pool"}:
             par_bornes = objet.sorte == "pool"
             trouvees = [
                 loc
                 for debut, fin in _plages(objet)
                 if (loc := self._localiser_plage(debut, fin, par_bornes)) is not None
             ]
-            if not trouvees:
-                return Localisation(CTX, par_nom.zone)
-            return fusionner(trouvees)
+            return fusionner(trouvees) if trouvees else INCONNUE
         if objet.sorte == "vip":
-            return self._vip(objet, par_nom)
+            return self._vip(objet)
+        par_nom = depuis_nom(objet.nom, self.sites, self.interfaces)
         if objet.sorte == "groupe-adresses":
             membres = fusionner(self.nom(membre) for membre in objet.mentions_adresses)
-            zone = membres.zone if membres.zone != CTX else par_nom.zone
-            return Localisation(membres.site, zone)
+            interface = membres.interface if membres.interface != CTX else par_nom.interface
+            return Localisation(membres.site, interface)
         return par_nom
+
+    def _reseau(self, objet: Objet) -> Localisation:
+        reseaux = _reseaux(objet)
+        trouvees = {
+            entree
+            for reseau in reseaux
+            if (entree := self.referentiel.entree(reseau.network_address, reseau.broadcast_address))
+        }
+        if not trouvees:
+            return INCONNUE
+        if len(trouvees) > 1:
+            return fusionner(Localisation(entree.site, entree.cle_interface or CTX) for entree in trouvees)
+        entree = trouvees.pop()
+        return Localisation(
+            entree.site,
+            entree.cle_interface or CTX,
+            zone=entree.zone if self.avec_zone else None,
+            vlan=entree.vlan,
+            exact=all(reseau == entree.reseau for reseau in reseaux),
+        )
 
     def _localiser_plage(
         self, debut: Adresse, fin: Adresse, par_bornes: bool = True
     ) -> Localisation | None:
-        """Réseau contenant toute la plage ; sinon, si `par_bornes`, zones communes aux deux bornes."""
+        """Réseau contenant toute la plage ; sinon, si `par_bornes`, interfaces communes aux deux bornes."""
         entiere = self.referentiel.localiser(debut, fin)
         if entiere is not None or debut == fin or not par_bornes:
             return entiere
         bornes = [loc for loc in (self.referentiel.localiser(debut), self.referentiel.localiser(fin)) if loc]
         return fusionner(bornes) if bornes else None
 
-    def _vip(self, objet: Objet, par_nom: Localisation) -> Localisation:
-        _genre, externe, mappe, *_reste = objet.empreinte
-        trouvees: list[Localisation] = []
-        for valeur in (externe, mappe):
-            plage = _plage_texte(valeur)
-            if plage is not None:
-                loc = self._localiser_plage(*plage)
-                if loc is not None:
-                    trouvees.append(loc)
-            elif valeur in self._adresses:
-                trouvees.append(self.nom(valeur))
-        resultat = fusionner(trouvees)
-        if resultat.zone == CTX:
-            resultat = Localisation(resultat.site, par_nom.zone)
-        return resultat
+    def _vip(self, objet: Objet) -> Localisation:
+        """Interface de l'adresse interne (mappedip) seule ; inconnue : à revoir, sans repli sur le nom."""
+        _genre, _externe, mappe, *_reste = objet.empreinte
+        plage = _plage_texte(mappe)
+        if plage is not None:
+            return self._localiser_plage(*plage) or INCONNUE
+        if mappe in self._adresses:
+            loc = self.nom(mappe)
+            return Localisation(loc.site, loc.interface)
+        return INCONNUE
 
 
 def _plages(objet: Objet) -> list[tuple[Adresse, Adresse]]:
@@ -257,12 +303,7 @@ def _plages(objet: Objet) -> list[tuple[Adresse, Adresse]]:
         return [(ipaddress.ip_address(empreinte[0]), ipaddress.ip_address(empreinte[1]))]
     if objet.sorte == "plage":
         return [(ipaddress.ip_address(empreinte[1]), ipaddress.ip_address(empreinte[2]))]
-    parties = empreinte if empreinte and isinstance(empreinte[0], tuple) else (empreinte,)
-    plages: list[tuple[Adresse, Adresse]] = []
-    for _famille, adresse, prefixe in parties:
-        reseau = ipaddress.ip_network(f"{adresse}/{prefixe}", strict=False)
-        plages.append((reseau.network_address, reseau.broadcast_address))
-    return plages
+    return [(reseau.network_address, reseau.broadcast_address) for reseau in _reseaux(objet)]
 
 
 def _reseaux(objet: Objet) -> list[Reseau]:

@@ -57,7 +57,7 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
     assert any(item["ancien"] == "web_dmz_backup" for item in plan["renommages"])
     assert any(item["nom"] == "srv-oublie" for item in plan["retraits"])
     assert "Référentiel réseaux :" in rapport and "sites : GRAS, SIEGE" in rapport
-    assert any(item["nouveau"] == "GRAS_NET_LAN_VLAN210" for item in plan["renommages"])
+    assert any(item["nouveau"] == "GRAS_NET_V210_GRAS-210" for item in plan["renommages"])
     assert "Aucune modification appliquée." in capsys.readouterr().out
 
 
@@ -71,19 +71,19 @@ def test_audit_sans_reseaux_csv(racine, tmp_path, capsys, monkeypatch):
     plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
     assert not any(item["ancien"] == "Vlan210" for item in plan["renommages"])
     revoir = {item["nom"]: item["commentaire"] for item in plan["a_revoir"]}
-    assert revoir["Vlan210"] == "site et zone introuvables : réseau absent de reseaux.csv"
+    assert revoir["Vlan210"] == "site et interface introuvables : réseau absent de reseaux.csv"
 
 
 def test_reseaux_csv_local_par_defaut(racine, tmp_path, capsys, monkeypatch):
     (tmp_path / "reseaux.csv").write_text(
-        "reseau;site;zone\n10.210.0.0/16;lyon;lan\n", encoding="utf-8"
+        "reseau;site;zone;vlan;interface\n10.210.0.0/16;lyon;;;SITE_DISTANT\n", encoding="utf-8"
     )
     monkeypatch.chdir(tmp_path)
     source = racine / "examples" / "fortigate" / "nomenclature.conf"
     assert executer(["audit", str(source), "--sortie", str(tmp_path / "out")]) == 0
     assert "sites : LYON" in capsys.readouterr().out
     plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
-    assert any(item["nouveau"] == "LYON_NET_LAN_VLAN210" for item in plan["renommages"])
+    assert any(item["nouveau"] == "LYON_NET_SITE-DISTANT" for item in plan["renommages"])
 
 
 def test_reseaux_introuvable(racine, tmp_path, capsys):

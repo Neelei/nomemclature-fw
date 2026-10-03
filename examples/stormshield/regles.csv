@@ -2,11 +2,11 @@
 # Les lignes nat ne sont pas des règles de filtrage : elles comptent seulement comme références.
 # Les noms de règles ne sont pas audités : les règles comptent seulement comme références.
 nom,etat,action,type,source,destination,service,interface_source,interface_destination,planification,source_traduite,destination_traduite
-ALLOW_SIEGE_LAN_DMZ_HTTPS,on,pass,filter,SIEGE_NET_LAN_UTILISATEURS,SIEGE_GRP_DMZ_WEB,SG_WEB,lan,dmz,SCH_BUREAU,,
-Acces web,on,pass,filter,SIEGE_NET_LAN_UTILISATEURS,web_dmz_backup,SVC_TCP_443_HTTPS,lan,dmz,SCH_BUREAU,,
-ALLOW_SIEGE_LAN_DMZ_LEGACY,off,pass,filter,SIEGE_HST_LAN_LEGACY,SIEGE_HST_DMZ_WEB-01,SVC_TCP_443_HTTPS,lan,dmz,,,
-ALLOW_SIEGE_VPN_LAN_HTTPS,on,pass,filter,SIEGE_RNG_VPN_CLIENTS,SIEGE_NET_LAN_UTILISATEURS,SVC_TCP_443_HTTPS,vpn,lan,,,
+ALLOW_SIEGE_LAN_DMZ_HTTPS,on,pass,filter,SIEGE_NET_V10_LAN-USERS,SIEGE_GRP_DMZ_WEB,SG_WEB,lan,dmz,SCH_BUREAU,,
+Acces web,on,pass,filter,SIEGE_NET_V10_LAN-USERS,web_dmz_backup,SVC_TCP_443_HTTPS,lan,dmz,SCH_BUREAU,,
+ALLOW_SIEGE_LAN_DMZ_LEGACY,off,pass,filter,SIEGE_HST_LAN-USERS_LEGACY,SIEGE_HST_DMZ_WEB-01,SVC_TCP_443_HTTPS,lan,dmz,,,
+ALLOW_SIEGE_VPN_LAN_HTTPS,on,pass,filter,SIEGE_RNG_VPN-SSL_CLIENTS,SIEGE_NET_V10_LAN-USERS,SVC_TCP_443_HTTPS,vpn,lan,,,
 ALLOW_SIEGE_WAN_DMZ_HTTPS,on,pass,filter,any,SIEGE_HST_WAN_VIP,SVC_TCP_443_HTTPS,wan,dmz,,,
 ALLOW_SIEGE_LAN_DMZ_DOUBLON,on,pass,filter,LAN_Utilisateurs,"Web_DMZ,Groupe_Web",HTTPS_custom,lan,dmz,Bureau,,
 Clients vers web,on,pass,filter,Clients_web,SIEGE_HST_DMZ_WEB-01,SVC_TCP_443_HTTPS,in3,dmz,SCH_BUREAU,,
-nat-sortant,on,nat,nat,SIEGE_NET_LAN_UTILISATEURS,SIEGE_HST_WAN_VIP,SVC_TCP_443_HTTPS,lan,wan,,SIEGE_RNG_WAN_NAT,SIEGE_HST_WAN_VIP
+nat-sortant,on,nat,nat,SIEGE_NET_V10_LAN-USERS,SIEGE_HST_WAN_VIP,SVC_TCP_443_HTTPS,lan,wan,,SIEGE_RNG_WAN_NAT,SIEGE_HST_WAN_VIP

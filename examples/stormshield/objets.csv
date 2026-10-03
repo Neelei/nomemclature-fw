@@ -1,25 +1,26 @@
 # Export synthétique d'objets Stormshield (CSV annexe SNS, module Objets).
 # Cas couverts : nom non conforme, doublon strict, orphelin.
 # Site déduit du réseau avec --reseaux reseaux.exemple.csv ; groupe sur deux sites.
-# Noms conformes en MAJUSCULES : {SITE}_{PREFIXE}_{ZONE}_{DETAIL} ; services en
+# Noms conformes en MAJUSCULES : {SITE}_{PREFIXE}_{INTERFACE}_{DETAIL}, réseaux en
+# {SITE}_NET_V{VLAN}_{INTERFACE} (pas de zone côté SNS) ; services en
 # SVC_{PROTOCOLE}_{PORTS}_{LIBELLE} (SVC_TCP_443_HTTPS), groupes de services et
-# calendriers sans site ni zone (SG_WEB, SCH_BUREAU).
+# calendriers sans site ni interface (SG_WEB, SCH_BUREAU).
 host,SIEGE_HST_DMZ_WEB-01,10.1.1.10,,,,"Serveur web conforme"
 host,Web_DMZ,10.1.1.10,,,,"Doublon strict"
 host,web_dmz_backup,10.1.1.20,,,,"A renommer"
 host,srv-oublie,10.9.9.9,,,,"Aucune reference"
-host,SIEGE_HST_LAN_LEGACY,10.0.0.50,,,,"Regle desactivee"
+host,SIEGE_HST_LAN-USERS_LEGACY,10.0.0.50,,,,"Regle desactivee"
 host,SIEGE_HST_WAN_VIP,203.0.113.10,,,,"Publication"
-network,SIEGE_NET_LAN_UTILISATEURS,10.0.0.0,255.255.255.0,,,"LAN"
+network,SIEGE_NET_V10_LAN-USERS,10.0.0.0,255.255.255.0,,,"LAN"
 network,LAN_Utilisateurs,10.0.0.0,255.255.255.0,,,"Doublon reseau"
 network,Vlan210,10.210.0.0,255.255.255.0,,,"Reseau du site GRAS"
-range,SIEGE_RNG_VPN_CLIENTS,10.8.0.1,10.8.0.200,,,""
+range,SIEGE_RNG_VPN-SSL_CLIENTS,10.8.0.1,10.8.0.200,,,""
 range,SIEGE_RNG_WAN_NAT,203.0.113.20,203.0.113.30,,,""
 fqdn,SIEGE_FQDN_WAN_UPDATES,203.0.113.5,,""
 group,SIEGE_GRP_DMZ_WEB,"SIEGE_HST_DMZ_WEB-01",""
 group,Groupe_Web,"SIEGE_HST_DMZ_WEB-01","Doublon de groupe"
-group,Clients_web,"SIEGE_NET_LAN_UTILISATEURS,Vlan210","Deux sites"
-group,groupe-oublie,"SIEGE_HST_LAN_LEGACY","Groupe sans reference"
+group,Clients_web,"SIEGE_NET_V10_LAN-USERS,Vlan210","Deux sites"
+group,groupe-oublie,"SIEGE_HST_LAN-USERS_LEGACY","Groupe sans reference"
 service,SVC_TCP_443_HTTPS,tcp,443,,,"HTTPS"
 service,HTTPS_custom,tcp,443,,,"Doublon de service"
 servicegroup,SG_WEB,"SVC_TCP_443_HTTPS","Services web"
