@@ -128,39 +128,41 @@ def test_services_gardent_leur_libelle_avec_protocole_et_port():
     assert proposer_service("PING", _service(("icmp", [(8, 8)]))) == "SVC_ICMP_8_PING"
 
 
-def test_reseaux_zone_vlan_interface(contextes):
+def test_reseaux_vlan_interface(contextes):
     exact = Localisation("hq", "cabines", "lan", 25, exact=True)
-    assert proposer_objet("Res-VLAN25", "NET", exact, contextes) == "HQ_NET_LAN_V25_CABINES"
-    # Sans zone FortiGate (et toujours côté Stormshield) : pas de segment zone.
+    assert proposer_objet("Res-VLAN25", "NET", exact, contextes) == "HQ_NET_V25_CABINES"
+    # Zone réservée à l'inventaire : jamais dans le nom, même renseignée.
     sans_zone = Localisation("hq", "cabines", None, 25, exact=True)
     assert proposer_objet("Res-VLAN25", "NET", sans_zone, contextes) == "HQ_NET_V25_CABINES"
     # Port physique sans VLAN : pas de segment V.
     port = Localisation("hq", "cabines", "lan", None, exact=True)
-    assert proposer_objet("cabines", "NET", port, contextes) == "HQ_NET_LAN_CABINES"
+    assert proposer_objet("cabines", "NET", port, contextes) == "HQ_NET_CABINES"
     # Sous-réseau : l'ancien nom reste en détail après l'interface, sans mention de VLAN.
     sous_reseau = exact._replace(exact=False)
     assert proposer_objet("Imprimantes [vlan25]", "NET", sous_reseau, contextes) == (
-        "HQ_NET_LAN_V25_CABINES-IMPRIMANTES"
+        "HQ_NET_V25_CABINES-IMPRIMANTES"
     )
-    assert proposer_objet("VLAN-25", "NET", sous_reseau, contextes) == "HQ_NET_LAN_V25_CABINES"
+    assert proposer_objet("VLAN-25", "NET", sous_reseau, contextes) == "HQ_NET_V25_CABINES"
 
     def conforme(nom, attendu):
         return est_conforme_objet(nom, "reseau", contextes, ("hq",), interfaces=("cabines",), attendu=attendu)
 
-    assert conforme("HQ_NET_LAN_V25_CABINES", exact)
-    assert not conforme("HQ_NET_LAN_V25_CABINES-IMPRIMANTES", exact)
-    assert conforme("HQ_NET_LAN_V25_CABINES-IMPRIMANTES", sous_reseau)
-    assert conforme("HQ_NET_LAN_V25_CABINES", sous_reseau)
-    assert not conforme("HQ_NET_LAN_V26_CABINES", exact)
-    assert not conforme("HQ_NET_V25_CABINES", exact)
-    assert conforme("HQ_NET_V25_CABINES", sans_zone)
-    assert conforme("HQ_NET_LAN_CABINES", port)
+    assert conforme("HQ_NET_V25_CABINES", exact)
+    assert not conforme("HQ_NET_V25_CABINES-IMPRIMANTES", exact)
+    assert conforme("HQ_NET_V25_CABINES-IMPRIMANTES", sous_reseau)
+    assert conforme("HQ_NET_V25_CABINES", sous_reseau)
+    assert not conforme("HQ_NET_V26_CABINES", exact)
+    # Ancienne forme avec zone : plus conforme.
+    assert not conforme("HQ_NET_LAN_V25_CABINES", exact)
+    assert conforme("HQ_NET_CABINES", port)
+    assert not conforme("HQ_NET_LAN_CABINES", port)
     assert not conforme("HQ_NET_LAN_VLAN25-CABINES", exact)
-    # Sans localisation connue : forme seule.
-    assert conforme("HQ_NET_LAN_V25_CABINES-X", None)
+    # Sans localisation connue : forme seule (milieu = VLAN optionnel seulement).
+    assert conforme("HQ_NET_V25_CABINES-X", None)
     assert conforme("HQ_NET_CABINES", None)
+    assert not conforme("HQ_NET_LAN_V25_CABINES-X", None)
     assert not conforme("HQ_NET_USINE_V25_CABINES", None)
-    assert not conforme("HQ_NET_LAN_V25_AUTRE", None)
+    assert not conforme("HQ_NET_V25_AUTRE", None)
 
 
 def test_interface_avec_tiret_bas_ou_espaces(contextes):
@@ -193,19 +195,22 @@ def test_proposition_de_noms(contextes):
 def test_anciens_formats_reconnus(contextes):
     """Noms du lot 01 déjà appliqués sur le lab : ni la zone ni le VLAN ne passent dans le détail."""
     reseau = Localisation("hq", "vlan-11", "lan", 11)
-    assert proposer_objet("HQ_NET_LAN_VLAN11-RES", "NET", reseau, contextes) == "HQ_NET_LAN_V11_VLAN-11-RES"
-    assert proposer_objet("NET_HQ_LAN_VLAN11-RES", "NET", reseau, contextes) == "HQ_NET_LAN_V11_VLAN-11-RES"
+    assert proposer_objet("HQ_NET_LAN_VLAN11-RES", "NET", reseau, contextes) == "HQ_NET_V11_VLAN-11-RES"
+    assert proposer_objet("NET_HQ_LAN_VLAN11-RES", "NET", reseau, contextes) == "HQ_NET_V11_VLAN-11-RES"
     cabines = Localisation("hq", "cabines")
     assert proposer_objet("HQ_GRP_LAN_IMPRIMANTES", "GRP", cabines, contextes) == "HQ_GRP_CABINES_IMPRIMANTES"
     assert proposer_objet("HQ_HST_LOOP_FGT", "HST", cabines, contextes) == "HQ_HST_CABINES_FGT"
     assert proposer_objet("HQ_HST_MULTI_X", "HST", cabines, contextes) == "HQ_HST_CABINES_X"
-    # Nouvelle forme relue : l'interface en tête du dernier segment n'est pas répétée.
+    # Forme avec zone relue : l'interface en tête du dernier segment n'est pas répétée, zone retirée.
     sous_reseau = Localisation("hq", "cabines", "lan", 16)
-    nom = "HQ_NET_LAN_V16_CABINES-IMPRIMANTES"
+    assert proposer_objet("HQ_NET_LAN_V16_CABINES-IMPRIMANTES", "NET", sous_reseau, contextes, interfaces=("cabines",)) == (
+        "HQ_NET_V16_CABINES-IMPRIMANTES"
+    )
+    nom = "HQ_NET_V16_CABINES-IMPRIMANTES"
     assert proposer_objet(nom, "NET", sous_reseau, contextes, interfaces=("cabines",)) == nom
     autre = Localisation("hq", "cabines-bis", "lan", 17)
     assert proposer_objet(nom, "NET", autre, contextes, interfaces=("cabines",)) == (
-        "HQ_NET_LAN_V17_CABINES-BIS-IMPRIMANTES"
+        "HQ_NET_V17_CABINES-BIS-IMPRIMANTES"
     )
 
 
@@ -245,11 +250,11 @@ def test_troncature_coupe_le_detail_jamais_l_interface(contextes):
     interface = "centrale-detection-gaz"
     loc = Localisation("hq", interface, "lan", 25)
     nom = proposer_objet("tres long detail " * 5, "NET", loc, contextes, 60)
-    assert nom.startswith("HQ_NET_LAN_V25_CENTRALE-DETECTION-GAZ-TRES")
+    assert nom.startswith("HQ_NET_V25_CENTRALE-DETECTION-GAZ-TRES")
     assert len(nom) <= 60
-    assert tronquer("HQ_NET_LAN_V25_CENTRALE-DETECTION-GAZ", 30, protege=len(interface)) == (
-        "HQ_NET_LAN_V25_CENTRALE"
+    assert tronquer("HQ_NET_V25_CENTRALE-DETECTION-GAZ", 30, protege=len(interface)) == (
+        "HQ_NET_V25_CENTRALE-DETECTION"
     )
-    base = "HQ_NET_LAN_V25_CENTRALE-DETECTION-GAZ-ABC"
+    base = "HQ_NET_V25_CENTRALE-DETECTION-GAZ-ABC"
     unique = rendre_unique(base, {base}, len(base), len(interface))
-    assert unique == "HQ_NET_LAN_V25_CENTRALE-DETECTION-GAZ-01"
+    assert unique == "HQ_NET_V25_CENTRALE-DETECTION-GAZ-01"

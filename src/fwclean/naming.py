@@ -30,8 +30,10 @@ RESERVES = frozenset({CTX, MULTI})
 
 
 class Localisation(NamedTuple):
-    """Site et interface d'un objet (minuscules) ; zone, VLAN et `exact` ne servent qu'aux réseaux.
+    """Site et interface d'un objet (minuscules) ; VLAN et `exact` entrent dans les noms réseau.
 
+    `zone` reste lue dans reseaux.csv (inventaire) et sert à retirer l'ancienne zone d'un
+    nom déjà appliqué ; elle n'entre plus dans les noms proposés.
     `exact` : l'objet réseau est le réseau même de l'interface (pas un sous-réseau).
     """
 
@@ -234,10 +236,8 @@ _SEGMENT_VLAN = re.compile(r"v\d+")
 
 
 def segments_reseau(localisation: Localisation) -> list[str]:
-    """Segments d'un nom réseau avant le dernier : SITE, NET, [ZONE], [V{ID}] (minuscules)."""
+    """Segments d'un nom réseau avant le dernier : SITE, NET, [V{ID}] (minuscules)."""
     segments = [localisation.site, PREFIXE["reseau"].lower()]
-    if localisation.zone:
-        segments.append(localisation.zone)
     if localisation.vlan is not None:
         segments.append(f"v{localisation.vlan}")
     return segments
@@ -296,9 +296,8 @@ def est_conforme_objet(
     if sorte != "reseau":
         return len(parties) == 4 and minuscules[2] in connues
     *milieu, dernier = minuscules[2:]
-    if len(milieu) > 2 or (len(milieu) == 2 and not _SEGMENT_VLAN.fullmatch(milieu[1])):
-        return False
-    if milieu and not (zone_valide(milieu[0], contextes) or _SEGMENT_VLAN.fullmatch(milieu[0])):
+    # Milieu : éventuellement un seul segment VLAN (v\d+) ; plus de zone.
+    if len(milieu) > 1 or (milieu and not _SEGMENT_VLAN.fullmatch(milieu[0])):
         return False
     return any(dernier == interface or dernier.startswith(f"{interface}-") for interface in connues)
 
@@ -321,9 +320,10 @@ def _detail_depuis_nom(
 ) -> list[str]:
     """Jetons de l'ancien nom sans le préfixe, ni le site, la zone, le VLAN et l'interface.
 
-    Un nom déjà découpé en SITE_PREFIXE_… ou PREFIXE_SITE_… (ancienne convention par zone,
-    HQ_NET_LAN_VLAN11-RES, ou nouvelle, HQ_NET_LAN_V11_VLAN-11-RES) ne garde que son dernier
-    segment, moins l'interface en tête : l'ancienne zone n'est jamais recopiée dans le détail.
+    Un nom déjà découpé en SITE_PREFIXE_… ou PREFIXE_SITE_… (ancienne convention avec zone,
+    HQ_NET_LAN_VLAN11-RES / HQ_NET_LAN_V11_…, ou forme actuelle HQ_NET_V11_…) ne garde que
+    son dernier segment, moins l'interface en tête : l'ancienne zone n'est jamais recopiée
+    dans le détail.
     """
     cles = {prefixe.lower(), *(ancien.lower() for ancien in ANCIENS_PREFIXES.get(prefixe, ()))}
     reseau = prefixe == PREFIXE["reseau"]
@@ -410,7 +410,7 @@ def proposer_objet(
 ) -> str:
     """Nom proposé selon la sorte :
 
-    - réseau : {SITE}_NET_[{ZONE}_][V{VLAN}_]{INTERFACE}, suivi de -{DETAIL} pour un sous-réseau ;
+    - réseau : {SITE}_NET_[V{VLAN}_]{INTERFACE}, suivi de -{DETAIL} pour un sous-réseau ;
     - autre objet localisé : {SITE}_{PREFIXE}_{INTERFACE}_{DETAIL} ;
     - sans localisation (services, calendriers…) : {PREFIXE}_{DETAIL}.
     """

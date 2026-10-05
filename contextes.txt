@@ -1,8 +1,8 @@
-# Zones FortiGate, une par ligne : segment zone des seuls objets réseau
-# ({SITE}_NET_{ZONE}_V{VLAN}_{INTERFACE}, ex. HQ_NET_LAN_V16_CABINES).
-# Les autres objets portent l'interface de reseaux.csv, pas la zone ; Stormshield
-# n'a pas de zones. Clés en minuscules ; matching case-insensitive ; les noms
-# produits sont en MAJUSCULES. MULTI et CTX sont réservés : inutile de les ajouter.
+# Zones FortiGate, une par ligne : noms courts pour la colonne zone de reseaux.csv
+# (inventaire seulement). Les objets réseau se nomment
+# {SITE}_NET_[V{VLAN}_]{INTERFACE} (ex. HQ_NET_V16_CABINES) ; la zone n'entre
+# plus dans aucun nom. Stormshield n'a pas de zones. Clés en minuscules ;
+# matching case-insensitive. MULTI et CTX sont réservés : inutile de les ajouter.
 #
 # Après « = » : noms des zones FortiGate (config system zone, zones SD-WAN) qui
 # correspondent à cette zone courte, séparés par des virgules. `fwclean reseaux`
@@ -14,7 +14,7 @@ dmz
 wan                          # zone SD-WAN WAN (VLAN-777)
 mgmt = MGMT NETWORKS         # iDRAC, Datacore, SAN
 bastion = Bastion ADMIN_MGMT
-users = Users LAN            # Wi-Fi corporate (VLAN-40)
+users = Users LAN            # Wi-Fi corporate
 preprodfr = PreProd FRANCE
 preprodth = PreProd THAILANDE
 invite = WIFI INVITE VLAN-42

@@ -39,7 +39,7 @@ def test_exemple_fortigate(racine, contextes, referentiel):
         ("groupe-adresses", "SIEGE_GRP_DMZ_WEB", ("Groupe Web",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("hote", "SIEGE_HST_DMZ_WEB-01", ("Web_DMZ",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("pool", "SIEGE_POOL_WAN_SORTANT", ("SNAT_POOL",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
-        ("reseau", "SIEGE_NET_LAN_V10_LAN-USERS", ("LAN Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
+        ("reseau", "SIEGE_NET_V10_LAN-USERS", ("LAN Utilisateurs",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
         ("service", "SVC_TCP_443_HTTPS", ("HTTPS custom",), ("ALLOW_SIEGE_LAN_DMZ_DOUBLON",)),
     ]
     assert resultat.fusions[3].contenu == "10.1.1.10/32"
@@ -216,8 +216,8 @@ end
     resultat = auditer(inventaire, contextes, referentiel)
     noms = {item.ancien: item.nouveau for item in resultat.renommages}
     # Sous-réseaux de 10.1.0.0/16 (SERVEURS) : ancien nom en détail, VLAN de reseaux.csv seul.
-    assert noms["SRV-ESX [vlan11]"] == "SIEGE_NET_LAN_SERVEURS-SRV-ESX"
-    assert noms["sous-reseau-esx"] == "SIEGE_NET_LAN_SERVEURS-SOUS-RESEAU-ESX"
+    assert noms["SRV-ESX [vlan11]"] == "SIEGE_NET_SERVEURS-SRV-ESX"
+    assert noms["sous-reseau-esx"] == "SIEGE_NET_SERVEURS-SOUS-RESEAU-ESX"
     # Réseau même de l'interface DMZ : le nom se termine par l'interface.
-    assert noms["dmz-sans-vlan"] == "SIEGE_NET_DMZ_DMZ"
+    assert noms["dmz-sans-vlan"] == "SIEGE_NET_DMZ"
     assert "IDRAC address" not in noms

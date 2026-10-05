@@ -4,13 +4,12 @@ Convention commune pour les objets FortiGate et Stormshield. Elle ne décrit pas
 
 ## Forme
 
-Le troisième segment des objets d'adresse est l'**interface** du réseau qui contient l'objet, lue dans [`reseaux.csv`](#référentiel-reseauxcsv). La zone FortiGate ne sert plus qu'aux objets réseau.
+Le troisième segment des objets d'adresse est l'**interface** du réseau qui contient l'objet, lue dans [`reseaux.csv`](#référentiel-reseauxcsv). La colonne `zone` de ce fichier reste pour l'inventaire FortiGate ; elle n'entre dans aucun nom.
 
 | Objets | Forme | Exemple |
 | --- | --- | --- |
 | hôtes, plages, FQDN, groupes d'adresses, VIP, pools | `{SITE}_{PREFIXE}_{INTERFACE}_{DETAIL}` | `HQ_HST_CABINES_PC01` |
-| réseau dans une zone FortiGate | `{SITE}_NET_{ZONE}_V{VLAN}_{INTERFACE}` | `HQ_NET_LAN_V16_CABINES` |
-| réseau sans zone FortiGate, et tous les réseaux Stormshield | `{SITE}_NET_V{VLAN}_{INTERFACE}` | `HQ_NET_V16_CABINES` |
+| réseau | `{SITE}_NET_[V{VLAN}_]{INTERFACE}` | `HQ_NET_V16_CABINES`, `HQ_NET_CABINES` |
 | services | `SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}` | `SVC_TCP_443_HTTPS`, `SVC_ANY_53_DNS` |
 | groupes de services, calendriers | `{PREFIXE}_{DETAIL}` | `SG_ACTIVE-DIRECTORY`, `SCH_BUREAU` |
 
@@ -18,10 +17,10 @@ Services, groupes de services et calendriers n'ont ni site ni interface ; leur f
 
 - majuscules uniquement (`A-Z`, `0-9`) ;
 - les segments sont séparés par un underscore `_` ;
-- le tiret `-` sert à l'intérieur du détail (`HQ_HST_CABINES_ZABBIX-SRV`), du nom d'interface (`HQ_HST_LABO-ANA_PC01`), et aux plages de ports d'un service (`SVC_UDP_67-68_DHCP`). Site, type et zone n'en contiennent jamais ;
+- le tiret `-` sert à l'intérieur du détail (`HQ_HST_CABINES_ZABBIX-SRV`), du nom d'interface (`HQ_HST_LABO-ANA_PC01`), et aux plages de ports d'un service (`SVC_UDP_67-68_DHCP`). Site et type n'en contiennent jamais ;
 - le point `.` n'existe que dans le segment des ports d'un service, pour séparer plusieurs ports (`SVC_ANY_88.464_KERBEROS`) ;
 - ni `_`, `-` ou `.` en début, en fin, ou doublé ; pas d'espace ni d'accent ;
-- un objet d'adresse non réseau a exactement quatre segments ; un réseau en a de trois à cinq selon qu'il a une zone et un VLAN (voir [Réseaux](#réseaux)).
+- un objet d'adresse non réseau a exactement quatre segments ; un réseau en a trois ou quatre selon qu'il a un VLAN (voir [Réseaux](#réseaux)).
 
 Longueur maximale, reprise des limites FortiOS :
 
@@ -30,14 +29,14 @@ Longueur maximale, reprise des limites FortiOS :
 | calendrier (`firewall schedule`) | 31 | 79 |
 | autres objets (adresses, groupes, services, VIP, pools) | 79 | 79 |
 
-Un nom proposé trop long est raccourci **dans son détail seulement**, à une frontière de tiret quand c'est possible : type, site, zone, VLAN et interface restent entiers. Pour un sous-réseau (`…_CABINES-IMPRIMANTES`), c'est le détail après l'interface qui est coupé, jamais l'interface. `SCH_HORAIRES-USINE-ETE-NUITS-WEK` (32 caractères) devient `SCH_HORAIRES-USINE-ETE-NUITS` sur FortiGate. Un nom déjà en place qui dépasse la limite est signalé non conforme.
+Un nom proposé trop long est raccourci **dans son détail seulement**, à une frontière de tiret quand c'est possible : type, site, VLAN et interface restent entiers. Pour un sous-réseau (`…_CABINES-IMPRIMANTES`), c'est le détail après l'interface qui est coupé, jamais l'interface. `SCH_HORAIRES-USINE-ETE-NUITS-WEK` (32 caractères) devient `SCH_HORAIRES-USINE-ETE-NUITS` sur FortiGate. Un nom déjà en place qui dépasse la limite est signalé non conforme.
 
 ## Préfixes
 
 | Préfixe | Objet | Exemple |
 | --- | --- | --- |
 | `HST` | hôte | `SIEGE_HST_DMZ_WEB-01` |
-| `NET` | réseau | `SIEGE_NET_LAN_V10_LAN-USERS` |
+| `NET` | réseau | `SIEGE_NET_V10_LAN-USERS` |
 | `RNG` | plage d'adresses | `SIEGE_RNG_VPN-SSL_CLIENTS` |
 | `FQDN` | nom DNS | `SIEGE_FQDN_WAN_UPDATES` |
 | `GRP` | groupe d'adresses | `SIEGE_GRP_DMZ_WEB` |
@@ -55,24 +54,24 @@ Le **site** est le premier segment d'un objet d'adresse, le préfixe le deuxièm
 
 L'**interface** est le troisième segment des objets non réseau et le dernier des réseaux. C'est la colonne `interface` de `reseaux.csv`, **normalisée** : `_`, espaces et autres signes deviennent `-`, accents retirés, majuscules. `LABO_ANA` → `LABO-ANA`, `WIFI INVITE` → `WIFI-INVITE`, `SAN Mgmt` → `SAN-MGMT`. Sans cela on ne pourrait plus découper le nom sur `_`. Deux interfaces qui donnent le même nom normalisé (`LABO_ANA` et `LABO-ANA`) sont signalées par `fwclean reseaux` : en renommer une dans la colonne.
 
-La **zone** n'apparaît que dans les réseaux FortiGate. C'est la zone FortiGate traduite par [`contextes.txt`](../contextes.txt) en nom court d'un seul segment (`mgmt = MGMT NETWORKS`). Stormshield n'a pas de zones : ses réseaux n'ont jamais de segment zone.
+La **zone** est la colonne `zone` de `reseaux.csv` : inventaire de la zone FortiGate (nom court d'un seul segment, `mgmt = MGMT NETWORKS` via [`contextes.txt`](../contextes.txt)). Elle **n'entre dans aucun nom** — ni réseaux, ni hôtes, ni groupes. Stormshield n'a pas de zones : la colonne reste vide.
 
 La comparaison est **case-insensitive** : les fichiers gardent leurs clés en minuscules (`siege`, `lan`), les noms les écrivent en majuscules. Ajouter un site, une interface ou une zone ne demande pas de modifier le programme.
 
-Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01 :
+Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01 (colonne `zone` seulement) :
 
-| Zone (fichier) | Dans un nom | Zone FortiGate |
-| --- | --- | --- |
-| `lan` | `LAN` | `LAN` : réseaux internes |
-| `dmz` | `DMZ` | `DMZ` : zone exposée |
-| `wan` | `WAN` | `WAN` (zone SD-WAN) : accès opérateur |
-| `mgmt` | `MGMT` | `MGMT NETWORKS` : iDRAC, Datacore, SAN |
-| `bastion` | `BASTION` | `Bastion ADMIN_MGMT` |
-| `users` | `USERS` | `Users LAN` : Wi-Fi corporate |
-| `preprodfr` | `PREPRODFR` | `PreProd FRANCE` |
-| `preprodth` | `PREPRODTH` | `PreProd THAILANDE` |
-| `invite` | `INVITE` | `WIFI INVITE VLAN-42` |
-| `mobile` | `MOBILE` | `WIFI MOBILE VLAN-41` |
+| Zone (fichier) | Zone FortiGate |
+| --- | --- |
+| `lan` | `LAN` : réseaux internes |
+| `dmz` | `DMZ` : zone exposée |
+| `wan` | `WAN` (zone SD-WAN) : accès opérateur |
+| `mgmt` | `MGMT NETWORKS` : iDRAC, Datacore, SAN |
+| `bastion` | `Bastion ADMIN_MGMT` |
+| `users` | `Users LAN` : Wi-Fi corporate |
+| `preprodfr` | `PreProd FRANCE` |
+| `preprodth` | `PreProd THAILANDE` |
+| `invite` | `WIFI INVITE VLAN-42` |
+| `mobile` | `WIFI MOBILE VLAN-41` |
 
 Les anciennes entrées `vpn`, `oob` et `loop` (interfaces hors zone `ssl.root`, `mgmt`, `LOOPMGMT`) et les correspondances d'interfaces Stormshield (`FObouygues`, `HA`, `VTI_FRSI_THUS`…) sont retirées : ces interfaces ont maintenant leur propre nom dans la colonne `interface`.
 
@@ -80,7 +79,7 @@ Les anciennes entrées `vpn`, `oob` et `loop` (interfaces hors zone `ssl.root`, 
 
 **Pas de nom sans correspondance.** Un objet d'adresse dont le site ou l'interface reste introuvable n'est pas renommé. Le rapport le liste avec le traitement `revoir` et un commentaire (« site et interface introuvables : adresse absente de reseaux.csv », « interface introuvable : réseau de reseaux.csv sans colonne interface… »), et le plan le reprend dans `a_revoir`. On complète `reseaux.csv` puis on relance l'audit. `CTX` n'apparaît dans aucun nom proposé, et un nom existant en `CTX` n'est pas conforme.
 
-**Conformité.** Quand le site et l'interface d'un objet sont connus, son nom doit les porter : `SIEGE_HST_DMZ_X` n'est pas conforme pour une adresse du réseau `SERVEURS`, et un nom de l'ancienne convention par zone (`HQ_HST_LAN_PC01`) ne l'est plus. Un réseau doit en plus porter la bonne zone et le bon VLAN. Pour un objet non localisable, seule la forme est vérifiée (site et interface connus de `reseaux.csv`).
+**Conformité.** Quand le site et l'interface d'un objet sont connus, son nom doit les porter : `SIEGE_HST_DMZ_X` n'est pas conforme pour une adresse du réseau `SERVEURS`, et un nom de l'ancienne convention par zone (`HQ_HST_LAN_PC01`, `HQ_NET_LAN_V16_CABINES`) ne l'est plus. Un réseau doit en plus porter le bon VLAN. Pour un objet non localisable, seule la forme est vérifiée (site et interface connus de `reseaux.csv`).
 
 ### Référentiel `reseaux.csv`
 
@@ -128,15 +127,14 @@ Le détail reprend l'ancien nom sans préfixe, et sans le site et l'interface re
 
 ## Réseaux
 
-Un objet réseau prend le site, la zone, le VLAN et l'interface de la ligne de `reseaux.csv` la plus précise qui le contient :
+Un objet réseau prend le site, le VLAN et l'interface de la ligne de `reseaux.csv` la plus précise qui le contient (la zone de cette ligne reste pour l'inventaire) :
 
-- **réseau identique** à celui de l'interface : le nom se termine par l'interface et ne garde rien de l'ancien nom. `Res-VLAN16` (`10.0.16.0/24`) → `HQ_NET_LAN_V16_CABINES` ;
-- **sous-réseau** plus petit (une `/28` dans une `/24`) : l'ancien nom reste en détail après l'interface, sinon plusieurs objets auraient le même nom. `Imprimantes` (`10.0.16.0/28`) → `HQ_NET_LAN_V16_CABINES-IMPRIMANTES` ;
-- **sans VLAN** (port physique, ligne sans `vlan`) : pas de segment `V`. `HQ_NET_LAN_CABINES` ;
-- **sans zone** (interface hors zone FortiGate, Stormshield) : pas de segment zone. `HQ_NET_V16_CABINES` ;
+- **réseau identique** à celui de l'interface : le nom se termine par l'interface et ne garde rien de l'ancien nom. `Res-VLAN16` (`10.0.16.0/24`) → `HQ_NET_V16_CABINES` ;
+- **sous-réseau** plus petit (une `/28` dans une `/24`) : l'ancien nom reste en détail après l'interface, sinon plusieurs objets auraient le même nom. `Imprimantes` (`10.0.16.0/28`) → `HQ_NET_V16_CABINES-IMPRIMANTES` ;
+- **sans VLAN** (port physique, ligne sans `vlan`) : pas de segment `V`. `HQ_NET_CABINES` ;
 - un réseau à cheval sur plusieurs lignes de `reseaux.csv` est à revoir.
 
-Le VLAN vient toujours de la colonne `vlan` de la ligne retenue, jamais de l'ancien nom : les mentions `VLAN11`, `vlan-11`, `[valn50]` sont retirées du détail et `V{ID}` a son propre segment (l'ancien `HQ_NET_LAN_VLAN25-RES` devient `HQ_NET_LAN_V25_…`). Un réseau dont le nom ne porte pas la bonne zone, le bon VLAN et la bonne interface n'est pas conforme.
+Le VLAN vient toujours de la colonne `vlan` de la ligne retenue, jamais de l'ancien nom : les mentions `VLAN11`, `vlan-11`, `[valn50]` sont retirées du détail et `V{ID}` a son propre segment (l'ancien `HQ_NET_LAN_VLAN25-RES` devient `HQ_NET_V25_…`). Un réseau dont le nom ne porte pas le bon VLAN et la bonne interface n'est pas conforme.
 
 ## Services
 
@@ -173,8 +171,8 @@ Avec `reseaux.exemple.csv` :
 | `partenaire` | `192.0.2.10/32` | hors référentiel | aucun : à revoir, « site et interface introuvables » |
 | `Clients web` | membres `SIEGE` et `GRAS` | espace, deux sites et deux interfaces | `MULTI_GRP_MULTI_CLIENTS-WEB` |
 | `HST-DMZ-WEB-01` | `10.1.1.10/32` | ancienne forme, sans site | `SIEGE_HST_DMZ_WEB-01` |
-| `LAN Utilisateurs` | `10.0.0.0/24`, réseau de l'interface `LAN-USERS` | espace, pas de VLAN | `SIEGE_NET_LAN_V10_LAN-USERS` |
-| `SRV-ESX [vlan11]` | `10.1.2.0/24` dans `10.1.0.0/16` (`SERVEURS`) | sous-réseau | `SIEGE_NET_LAN_SERVEURS-SRV-ESX` |
+| `LAN Utilisateurs` | `10.0.0.0/24`, réseau de l'interface `LAN-USERS` | espace, pas de VLAN | `SIEGE_NET_V10_LAN-USERS` |
+| `SRV-ESX [vlan11]` | `10.1.2.0/24` dans `10.1.0.0/16` (`SERVEURS`) | sous-réseau | `SIEGE_NET_SERVEURS-SRV-ESX` |
 | `SIEGE_HST_LAN_LEGACY` | `10.0.0.50/32` | ancienne zone au lieu de l'interface | `SIEGE_HST_LAN-USERS_LEGACY` |
 | `Appli metier 8443` | `tcp/8443` | espaces, pas de préfixe | `SVC_TCP_8443_APPLI-METIER` |
 | `SVC_HTTPS` | `tcp/443` | ni protocole ni port | `SVC_TCP_443_HTTPS` |

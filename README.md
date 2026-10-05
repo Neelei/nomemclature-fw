@@ -44,7 +44,7 @@ Un audit porte sur un seul constructeur et un seul format (FortiGate, CSV Storms
 
 ## Sites et interfaces
 
-Les noms d'objets portent le site puis l'interface du réseau de l'objet : `HQ_HST_CABINES_PC01`. Les réseaux portent en plus la zone FortiGate et le VLAN : `HQ_NET_LAN_V16_CABINES`, ou `HQ_NET_V16_CABINES` sans zone (interface hors zone, Stormshield). Les règles ne sont pas renommées pour le moment. Site, zone, VLAN et interface viennent de `reseaux.csv` :
+Les noms d'objets portent le site puis l'interface du réseau de l'objet : `HQ_HST_CABINES_PC01`. Les réseaux portent en plus le VLAN optionnel : `HQ_NET_V16_CABINES`, ou `HQ_NET_CABINES` sans VLAN. La colonne `zone` de `reseaux.csv` reste pour l'inventaire FortiGate et n'entre dans aucun nom. Les règles ne sont pas renommées pour le moment. Site, zone, VLAN et interface viennent de `reseaux.csv` :
 
 ```text
 reseau;site;zone;vlan;interface
@@ -53,7 +53,7 @@ reseau;site;zone;vlan;interface
 192.168.1.0/24;hq;;;mgmt
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Le nom d'interface est normalisé (`LABO_ANA` → `LABO-ANA`). Un sous-réseau garde son ancien nom après l'interface (`HQ_NET_LAN_V16_CABINES-IMPRIMANTES`). Un groupe dont les membres sont sur plusieurs sites ou interfaces prend `MULTI` ; une VIP prend l'interface de son adresse interne. Un objet hors référentiel, ou dont le réseau n'a pas d'interface (ancien `reseaux.csv` à 4 colonnes), n'est pas renommé : il est listé à revoir avec un commentaire. Services, groupes de services (`SG_WEB`) et calendriers n'ont ni site ni interface. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
+Le réseau le plus précis qui contient l'objet gagne. Le nom d'interface est normalisé (`LABO_ANA` → `LABO-ANA`). Un sous-réseau garde son ancien nom après l'interface (`HQ_NET_V16_CABINES-IMPRIMANTES`). Un groupe dont les membres sont sur plusieurs sites ou interfaces prend `MULTI` ; une VIP prend l'interface de son adresse interne. Un objet hors référentiel, ou dont le réseau n'a pas d'interface (ancien `reseaux.csv` à 4 colonnes), n'est pas renommé : il est listé à revoir avec un commentaire. Services, groupes de services (`SG_WEB`) et calendriers n'ont ni site ni interface. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
 
@@ -61,7 +61,7 @@ Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour
 cp reseaux.exemple.csv reseaux.csv
 ```
 
-puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et liste les objets d'adresse à revoir. Les zones FortiGate et leur nom court (`lan`, `dmz`, `wan`, `mgmt = MGMT NETWORKS`, …), qui ne servent qu'au nom des réseaux, sont dans `contextes.txt`.
+puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et liste les objets d'adresse à revoir. Les zones FortiGate et leur nom court (`lan`, `dmz`, `wan`, `mgmt = MGMT NETWORKS`, …), pour la seule colonne `zone` de l'inventaire, sont dans `contextes.txt`.
 
 La commande affiche les compteurs et écrit :
 
@@ -94,7 +94,7 @@ uv run pytest
 uv run fwclean reseaux inbox/pare-feu.conf --site siege
 ```
 
-Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate : zone FortiGate de chaque interface traduite par `contextes.txt` (`mgmt = MGMT NETWORKS`), vide hors zone ; `vlanid` dans la colonne `vlan` ; **alias** de l'interface (`set alias`) dans la colonne `interface`, par exemple `CENTRALE DETECTION GAZ` pour `VLAN-25`, ce qui donne `HQ_NET_LAN_V25_CENTRALE-DETECTION-GAZ`. Une interface sans alias garde son nom technique, signalé en commentaire de ligne et en fin de commande ; un alias ou un nom qui ne dit rien (`VLAN-131`, `port3`) est signalé aussi. Les remplacer à la main dans la colonne avant de produire les scripts. Relancé avec `--ajouter` sur un fichier qui porte encore les noms techniques, il les remplace par l'alias, sans toucher aux noms corrigés à la main. `--ecraser` remplace un fichier existant.
+Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate : zone FortiGate de chaque interface traduite par `contextes.txt` (`mgmt = MGMT NETWORKS`), vide hors zone ; `vlanid` dans la colonne `vlan` ; **alias** de l'interface (`set alias`) dans la colonne `interface`, par exemple `CENTRALE DETECTION GAZ` pour `VLAN-25`, ce qui donne `HQ_NET_V25_CENTRALE-DETECTION-GAZ`. Une interface sans alias garde son nom technique, signalé en commentaire de ligne et en fin de commande ; un alias ou un nom qui ne dit rien (`VLAN-131`, `port3`) est signalé aussi. Les remplacer à la main dans la colonne avant de produire les scripts. Relancé avec `--ajouter` sur un fichier qui porte encore les noms techniques, il les remplace par l'alias, sans toucher aux noms corrigés à la main. `--ecraser` remplace un fichier existant.
 
 Sur un SNS, `uv run fwclean reseaux inbox/stormshield --site siege` lit le fichier `Network` : une ligne par interface à adresse statique, `vlan` = `Tag`, `interface` = `Name`, zone toujours vide.
 
