@@ -121,11 +121,21 @@ Un exemple de site distant figure dans [`reseaux.exemple.csv`](reseaux.exemple.c
 
 ## Produire le script d'application
 
+### FortiGate
+
 ```bash
 uv run fwclean script inbox/pare-feu.conf --plan out/plan.json
 ```
 
 Écrit dans `out/fortigate/` trois fichiers de commandes CLI FortiGate à relire puis à coller lot par lot : `01-renommages.txt`, `02-fusions.txt`, `03-retraits.txt`, et `ignores.txt` pour ce qui n'est pas repris (objets par défaut de FortiOS, objets encore cités). Chaque lot tient compte des précédents (noms d'après 01, références retirées avant chaque `delete`). Si d'anciens scripts ont déjà été collés, `--deja-applique` les rejoue et écrit `02b-rattrapage.txt` et un `03-retraits.txt` pour l'état obtenu. Rien n'est envoyé au firewall. Détail dans [la méthode](docs/methode-nettoyage.md#appliquer-le-plan-sur-fortigate).
+
+### Stormshield (SNS)
+
+```bash
+uv run fwclean script inbox/stormshield --plan out/stormshield/plan.json --sortie out/stormshield
+```
+
+Écrit `01-renommages.py`, `02-fusions.py`, `03-retraits.py` (python-SNS-API) et `ignores.txt`. Chaque script accepte `--host`, `--user`, `--password`, `--dry-run`. Ordre : 01 → 02 → 03. Ne pas redéployer depuis SMC après exécution (écraserait les changements locaux). Valider d'abord en `--dry-run` au lab (positions de règles, champ `dstport`).
 
 ## Premier passage sur un export réel
 

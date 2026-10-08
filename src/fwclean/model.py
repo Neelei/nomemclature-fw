@@ -37,6 +37,13 @@ class Regle:
     interfaces_destination: tuple[str, ...] = ()
     planification: str | None = None
     pool: str | None = None
+    # Slot Filter SNS (nom de fichier « 05 ») et position 1-based (séparateurs inclus).
+    slot: str | None = None
+    position: int | None = None
+    # Listes brutes pour RULE UPDATE (any, internet… conservés).
+    sources_brutes: tuple[str, ...] = ()
+    destinations_brutes: tuple[str, ...] = ()
+    services_brutes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

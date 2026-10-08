@@ -115,7 +115,10 @@ def test_melange_de_constructeurs(racine):
 
 def test_gitignore_inbox_et_out(racine):
     texte = (racine / ".gitignore").read_text(encoding="utf-8")
-    assert "inbox/" in texte
-    assert "out/" in texte
-    assert "reseaux.csv" in texte.splitlines()
+    lignes = [ligne.strip() for ligne in texte.splitlines()]
+    assert "inbox/" in lignes
+    assert "out/" in lignes
+    assert "reseaux.csv.bak*" in lignes
+    # reseaux.csv est le référentiel versionné (édition manuelle), plus gitignoré.
+    assert "reseaux.csv" not in lignes
     assert (racine / "reseaux.exemple.csv").is_file()

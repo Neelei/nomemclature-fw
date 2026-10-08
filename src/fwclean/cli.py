@@ -22,6 +22,7 @@ from fwclean.reseaux import (
     reseaux_sns,
 )
 from fwclean.script import generer_script
+from fwclean.script_sns import generer_script_sns
 from fwclean.sites import Referentiel, lire_reseaux
 from fwclean.stormshield_natif import genre_natif
 
@@ -49,7 +50,8 @@ def executer(argv: list[str] | None = None) -> int:
             "  fwclean audit inbox/pare-feu.conf --sortie out\n"
             "  fwclean audit inbox/pare-feu.conf --reseaux reseaux.exemple.csv\n"
             "  fwclean reseaux inbox/pare-feu.conf --site siege\n"
-            "  fwclean script inbox/pare-feu.conf --plan out/plan.json"
+            "  fwclean script inbox/pare-feu.conf --plan out/plan.json\n"
+            "  fwclean script inbox/stormshield --plan out/stormshield/plan.json --sortie out/stormshield"
         ),
     )
     analyseur.add_argument("--version", action="version", version=f"fwclean {__version__}")
@@ -126,16 +128,24 @@ def executer(argv: list[str] | None = None) -> int:
 
     script = sous.add_parser(
         "script",
-        help="Écrire le script CLI FortiGate qui applique un plan relu",
+        help="Écrire les scripts d'application d'un plan relu (FortiGate CLI ou SNS Python)",
         description=(
-            "Relit la sauvegarde et le plan, et écrit trois fichiers de commandes : "
-            "01-renommages.txt, 02-fusions.txt, 03-retraits.txt, découpés en lots. "
-            "Les objets par défaut de FortiGate sont exclus. Rien n'est envoyé à l'équipement."
+            "Relit la sauvegarde et le plan. FortiGate : 01-renommages.txt, 02-fusions.txt, "
+            "03-retraits.txt. Stormshield : 01-renommages.py, 02-fusions.py, 03-retraits.py "
+            "(python-SNS-API, --dry-run). Rien n'est envoyé à l'équipement."
         ),
     )
-    script.add_argument("chemin", metavar="CONF", help="Sauvegarde FortiGate .conf auditée")
+    script.add_argument(
+        "chemin",
+        metavar="CHEMIN",
+        help="Sauvegarde FortiGate .conf, ou dossier d'export natif SNS (inbox/stormshield)",
+    )
     script.add_argument("--plan", default="out/plan.json", help="Plan relu (défaut : out/plan.json)")
-    script.add_argument("--sortie", default="out/fortigate", help="Dossier des scripts (défaut : out/fortigate)")
+    script.add_argument(
+        "--sortie",
+        default="out/fortigate",
+        help="Dossier des scripts (défaut : out/fortigate, ou out/stormshield si plan SNS)",
+    )
     script.add_argument("--lot", type=int, default=20, help="Objets par lot (défaut : 20)")
     script.add_argument(
         "--deja-applique",
@@ -143,14 +153,14 @@ def executer(argv: list[str] | None = None) -> int:
         default=[],
         metavar="SCRIPT",
         help=(
-            "Script déjà collé sur l'équipement (répétable, dans l'ordre) : il est rejoué sur la "
+            "FortiGate seulement : script déjà collé (répétable, dans l'ordre) ; rejoué sur la "
             "sauvegarde, et seuls 02b-rattrapage.txt et 03-retraits.txt sont écrits pour la suite"
         ),
     )
     script.add_argument(
         "--inclure-defauts",
         action="store_true",
-        help="Traiter aussi les objets par défaut de FortiGate (ALL, HTTP, always, …)",
+        help="FortiGate : traiter aussi les objets par défaut (ALL, HTTP, always, …)",
     )
 
     args = analyseur.parse_args(argv)
@@ -303,6 +313,35 @@ def _source_reseaux(chemin: Path) -> Path:
 def _script(args: argparse.Namespace) -> int:
     try:
         plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+        if plan.get("constructeur") == "stormshield":
+            if args.deja_applique:
+                raise ErreurLecture("--deja-applique n'est pas géré pour Stormshield.")
+            inventaire = charger([Path(args.chemin)])
+            resultat = generer_script_sns(inventaire, plan, args.lot)
+            dossier = Path(args.sortie)
+            if args.sortie == "out/fortigate":
+                dossier = Path("out/stormshield")
+            dossier.mkdir(parents=True, exist_ok=True)
+            (dossier / "01-renommages.py").write_text(resultat.renommages, encoding="utf-8")
+            (dossier / "02-fusions.py").write_text(resultat.fusions, encoding="utf-8")
+            (dossier / "03-retraits.py").write_text(resultat.retraits, encoding="utf-8")
+            ignores = "\n".join(f"- {ligne}" for ligne in resultat.ignores) or "Aucun."
+            (dossier / "ignores.txt").write_text(
+                "Opérations du plan non reprises dans les scripts SNS :\n\n" + ignores + "\n",
+                encoding="utf-8",
+            )
+            c = resultat.compteurs
+            print(f"Scripts SNS : {dossier}")
+            print(
+                f"Commandes renommages : {c.get('commandes_renommages', c['renommages'])}, "
+                f"fusions : {c.get('commandes_fusions', c['fusions'])} "
+                f"({c['fusions']} DELETE), "
+                f"retraits : {c['retraits']}, "
+                f"ignorés : {len(resultat.ignores)} (voir ignores.txt)."
+            )
+            print("Exécuter avec --dry-run puis sans, dans l'ordre 01 → 02 → 03. Rien n'a été envoyé.")
+            return 0
+
         texte = Path(args.chemin).read_text(encoding="utf-8-sig")
         appliques = tuple(Path(chemin).read_text(encoding="utf-8") for chemin in args.deja_applique)
         resultat = generer_script(texte, plan, args.lot, args.inclure_defauts, appliques)

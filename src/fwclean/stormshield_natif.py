@@ -106,8 +106,10 @@ def assembler_natif(
         elif genre == "servicegroup":
             objets.extend(lire_groupes_natifs(texte, "groupe-services"))
         elif genre == "filter":
-            prefixe = f"{label.rsplit('/', 1)[-1]}:" if len(filtres) > 1 else ""
-            lus_regles, lus_liens = lire_filtre_natif(texte, prefixe)
+            slot = label.rsplit("/", 1)[-1]
+            prefixe = f"{slot}:" if len(filtres) > 1 else ""
+            slot_index = slot if slot.isdigit() else None
+            lus_regles, lus_liens = lire_filtre_natif(texte, prefixe, slot=slot_index)
             regles.extend(lus_regles)
             liens.extend(lus_liens)
         elif genre == "route":
@@ -331,7 +333,9 @@ def lire_groupes_natifs(texte: str, sorte: str) -> tuple[Objet, ...]:
     return tuple(groupes)
 
 
-def lire_filtre_natif(texte: str, prefixe: str = "") -> tuple[tuple[Regle, ...], tuple[Lien, ...]]:
+def lire_filtre_natif(
+    texte: str, prefixe: str = "", slot: str | None = None
+) -> tuple[tuple[Regle, ...], tuple[Lien, ...]]:
     """Règles de filtrage ([Filter]) et de NAT ([NAT]) ; le NAT ne compte que comme référence."""
     regles: list[Regle] = []
     liens: list[Lien] = []
@@ -347,6 +351,7 @@ def lire_filtre_natif(texte: str, prefixe: str = "") -> tuple[tuple[Regle, ...],
                 continue
             action = jetons[0].lower()
             champs = _champs(jetons[1:])
+            bruts = _champs(jetons[1:], garder_implicites=True)
             nom = prefixe + (champs["rulename"][0] if champs.get("rulename") else f"{section.lower()}-{numero}")
             traduits = champs.get("->from", []) + champs.get("->to", [])
             services_traduits = champs.get("->port", [])
@@ -372,6 +377,11 @@ def lire_filtre_natif(texte: str, prefixe: str = "") -> tuple[tuple[Regle, ...],
                     services=tuple(champs.get("port", [])),
                     protocoles=tuple(champs.get("ipproto", [])),
                     interfaces_source=tuple(champs.get("on", [])),
+                    slot=slot,
+                    position=numero,
+                    sources_brutes=tuple(bruts.get("from", [])),
+                    destinations_brutes=tuple(bruts.get("to", [])),
+                    services_brutes=tuple(bruts.get("port", [])),
                 )
             )
             if champs.get("route") or traduits or services_traduits:
@@ -385,7 +395,7 @@ def lire_filtre_natif(texte: str, prefixe: str = "") -> tuple[tuple[Regle, ...],
     return tuple(regles), tuple(liens)
 
 
-def _champs(jetons: list[str]) -> dict[str, list[str]]:
+def _champs(jetons: list[str], garder_implicites: bool = False) -> dict[str, list[str]]:
     """Listes d'objets par mot-clé ; après « -> », les champs traduits sont préfixés par « -> »."""
     champs: dict[str, list[str]] = {}
     prefixe = ""
@@ -400,7 +410,9 @@ def _champs(jetons: list[str]) -> dict[str, list[str]]:
         elif jeton in _CHAMPS_REGLE and index + 1 < len(jetons):
             valeurs = [_objet_cite(valeur) for valeur in jetons[index + 1].strip('"').split("|")]
             champs.setdefault(prefixe + jeton, []).extend(
-                valeur for valeur in valeurs if valeur and valeur.lower() not in _IMPLICITES
+                valeur
+                for valeur in valeurs
+                if valeur and (garder_implicites or valeur.lower() not in _IMPLICITES)
             )
             index += 1
         index += 1
