@@ -55,13 +55,7 @@ reseau;site;zone;vlan;interface
 
 Le réseau le plus précis qui contient l'objet gagne. Le nom d'interface est normalisé (`LABO_ANA` → `LABO-ANA`). Un sous-réseau garde son ancien nom après l'interface (`HQ_NET_V16_CABINES-IMPRIMANTES`). Un groupe dont les membres sont sur plusieurs sites ou interfaces prend `MULTI` ; une VIP prend l'interface de son adresse interne. Un objet hors référentiel, ou dont le réseau n'a pas d'interface (ancien `reseaux.csv` à 4 colonnes), n'est pas renommé : il est listé à revoir avec un commentaire. Services, groupes de services (`SG_WEB`) et calendriers n'ont ni site ni interface. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
 
-Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Pour commencer :
-
-```bash
-cp reseaux.exemple.csv reseaux.csv
-```
-
-puis remplacer les lignes par les réseaux réels. Sans `reseaux.csv`, l'audit tourne quand même et liste les objets d'adresse à revoir. Les zones FortiGate et leur nom court (`lan`, `dmz`, `wan`, `mgmt = MGMT NETWORKS`, …), pour la seule colonne `zone` de l'inventaire, sont dans `contextes.txt`.
+`reseaux.csv` est le référentiel versionné (édition manuelle). Pour démarrer depuis l'exemple : `cp reseaux.exemple.csv reseaux.csv`, puis adapter les lignes. Sans `reseaux.csv`, l'audit tourne quand même et liste les objets d'adresse à revoir. Les zones FortiGate et leur nom court (`lan`, `dmz`, `wan`, `mgmt = MGMT NETWORKS`, …), pour la seule colonne `zone` de l'inventaire, sont dans `contextes.txt`.
 
 La commande affiche les compteurs et écrit :
 
@@ -89,6 +83,8 @@ uv run pytest
 ```
 
 ## Générer reseaux.csv
+
+`reseaux.csv` est la source de vérité versionnée : `fwclean reseaux` (surtout `--ecraser`) ne doit pas l'écraser à la légère ; préférer `--ajouter` ou une édition manuelle.
 
 ```bash
 uv run fwclean reseaux inbox/pare-feu.conf --site siege

@@ -1,9 +1,6 @@
 # Exports réels : restent sur la machine, jamais dans git.
 inbox/
 
-# Référentiel réseaux réel (plan d'adressage) : seul reseaux.exemple.csv est versionné.
-reseaux.csv
-
 # Rapports produits par fwclean.
 out/
 
