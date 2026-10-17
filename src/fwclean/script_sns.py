@@ -328,7 +328,15 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
         etat, plan.get("globaux", []), courant, ignores
     )
 
+    cli = {
+        "01-renommages": _rendre_cli(cmds_renom, lot),
+        "02-fusions": _rendre_cli(cmds_fusion, lot),
+        "03-retraits": _rendre_cli(cmds_retrait, lot),
+        "04-globaux": _rendre_cli(cmds_globaux, lot),
+        "05-suppression-globaux": _rendre_cli(cmds_suppr_globaux, lot, ACTIVATE_GLOBAUX),
+    }
     return Script(
+        cli=cli,
         renommages=_rendre_script("01 — Renommages SNS", cmds_renom, lot),
         fusions=_rendre_script("02 — Fusions de doublons SNS", cmds_fusion, lot),
         retraits=_rendre_script("03 — Retraits d'orphelins SNS", cmds_retrait, lot),
@@ -701,6 +709,18 @@ def _q(valeur: str) -> str:
 def _liste(valeurs: tuple[str, ...]) -> str:
     # Le fichier Filter sépare les objets par `|`, la CLI (RULE UPDATE) par `,`.
     return _q(",".join(valeurs)) if valeurs else '""'
+
+
+def _rendre_cli(commandes: list[tuple[str, str]], lot: int, activate: tuple[str, ...] = ACTIVATE) -> str:
+    """Commandes brutes à coller dans la console CLI du SNS : MODIFY ON, blocs de `lot` séparés
+    par une ligne vide, puis l'activation. Aucun commentaire : la console ne les accepte pas."""
+    lignes = ["MODIFY ON", ""]
+    for index, (commande, _origine) in enumerate(commandes):
+        if index and index % lot == 0:
+            lignes.append("")
+        lignes.append(commande)
+    lignes.extend(["", *activate])
+    return "\n".join(lignes) + "\n"
 
 
 def _rendre_script(

@@ -315,3 +315,36 @@ def test_execution_jusqua(monkeypatch):
     code, envoyees, _ = _executer_lot(monkeypatch, commandes, argv=("--jusqua", "1"))
     assert code == 0
     assert envoyees == ["MODIFY ON", commandes[0], "CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE", "<disconnect>"]
+
+
+def test_version_cli_a_coller(tmp_path, referentiel):
+    from fwclean.audit import auditer
+    from fwclean.report import plan_dict
+
+    inventaire = charger([_export_slot_05(tmp_path)])
+    plan = plan_dict(auditer(inventaire, referentiel))
+    script = generer_script_sns(inventaire, plan, lot=2)
+    assert set(script.cli) == {"01-renommages", "02-fusions", "03-retraits", "04-globaux", "05-suppression-globaux"}
+    for nom, texte in script.cli.items():
+        lignes = texte.splitlines()
+        assert lignes[:2] == ["MODIFY ON", ""]
+        assert not any(ligne.startswith("#") for ligne in lignes)
+        assert lignes[-2:] == ["CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE"] or lignes[-1] == (
+            "CONFIG OBJECT ACTIVATE global=1"
+        )
+    # Mêmes commandes que le script Python, dans le même ordre.
+    ns: dict = {}
+    exec(script.globaux, ns)
+    commandes = [ligne for ligne in script.cli["04-globaux"].splitlines() if ligne.startswith("CONFIG ") and "ACTIVATE" not in ligne]
+    assert commandes == [c for c, _o in ns["COMMANDES"]]
+    # Blocs de 2 commandes séparés par une ligne vide.
+    assert "\n\n" in script.cli["04-globaux"].split("MODIFY ON\n\n", 1)[1].rsplit("\n\nCONFIG OBJECT ACTIVATE", 1)[0]
+
+
+def test_cli_sns_ecrit_les_fichiers_cli(tmp_path, racine):
+    sortie = tmp_path / "out"
+    dossier = _export_slot_05(tmp_path)
+    executer(["audit", str(dossier), "--sortie", str(sortie), "--reseaux", str(racine / "reseaux.exemple.csv")])
+    assert executer(["script", str(dossier), "--plan", str(sortie / "plan.json"), "--sortie", str(sortie / "sns")]) == 0
+    noms = {chemin.name for chemin in (sortie / "sns").iterdir()}
+    assert {f"{n}.cli.txt" for n in ("01-renommages", "02-fusions", "03-retraits", "04-globaux", "05-suppression-globaux")} <= noms

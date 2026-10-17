@@ -309,6 +309,10 @@ def _script(args: argparse.Namespace) -> int:
                 (dossier / "05-suppression-globaux.py").write_text(
                     resultat.suppression_globaux, encoding="utf-8"
                 )
+            for nom, texte in resultat.cli.items():
+                if nom.startswith(("04-", "05-")) and not plan.get("globaux"):
+                    continue
+                (dossier / f"{nom}.cli.txt").write_text(texte, encoding="utf-8")
             ignores = "\n".join(f"- {ligne}" for ligne in resultat.ignores) or "Aucun."
             (dossier / "ignores.txt").write_text(
                 "Opérations du plan non reprises dans les scripts SNS :\n\n" + ignores + "\n",
@@ -332,7 +336,10 @@ def _script(args: argparse.Namespace) -> int:
                     f"{c['globaux_supprimes']} suppression(s) global=1 (lot 05)."
                 )
                 ordre += " → 04 → 05"
-            print(f"Exécuter avec --dry-run puis sans, dans l'ordre {ordre}. Rien n'a été envoyé.")
+            print(
+                f"Exécuter avec --dry-run puis sans, dans l'ordre {ordre} ; ou coller les fichiers "
+                ".cli.txt dans la console CLI du SNS. Rien n'a été envoyé."
+            )
             return 0
 
         texte = Path(args.chemin).read_text(encoding="utf-8-sig")

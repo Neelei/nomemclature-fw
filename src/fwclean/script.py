@@ -169,6 +169,8 @@ class Script:
     # Stormshield : lot 04, remplacement des objets globaux SMC ; lot 05, leur suppression.
     globaux: str = ""
     suppression_globaux: str = ""
+    # Stormshield : mêmes commandes en texte brut à coller dans la console CLI, par nom de lot.
+    cli: dict[str, str] = field(default_factory=dict)
 
 
 def generer_script(
