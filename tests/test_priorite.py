@@ -1,6 +1,5 @@
 from fwclean.audit import auditer
 from fwclean.model import Inventaire, Objet, Regle
-from fwclean.naming import lire_contextes
 from fwclean.sites import lire_reseaux
 
 
@@ -28,8 +27,7 @@ def _auditer(racine, objets, regles=()):
         objets=tuple(objets),
         regles=tuple(regles),
     )
-    contextes = lire_contextes(racine / "contextes.txt")
-    return auditer(inventaire, contextes, lire_reseaux(racine / "reseaux.exemple.csv", contextes))
+    return auditer(inventaire, lire_reseaux(racine / "reseaux.exemple.csv"))
 
 
 def test_le_conforme_gagne_meme_moins_reference(racine):

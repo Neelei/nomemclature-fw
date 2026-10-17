@@ -5,12 +5,12 @@ from __future__ import annotations
 import ipaddress
 import re
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from fwclean.fortigate import blocs
 from fwclean.model import ErreurLecture
-from fwclean.naming import cle_correspondance, normaliser_interface
+from fwclean.naming import normaliser_interface
 from fwclean.sites import ENTETE_INTERFACE, ENTETES, Entree, analyser_reseaux
 from fwclean.stormshield_natif import interfaces_natives, reseaux_interface
 
@@ -18,14 +18,13 @@ _SECTIONS = frozenset({"system interface", "system zone", "system sdwan members"
 
 _ENTETES = {
     "fortigate": (
-        "# Réseaux directement connectés (config system interface). zone = zone FortiGate",
-        "# (config system zone, zones SD-WAN) traduite par contextes.txt, vide hors zone ;",
+        "# Réseaux directement connectés (config system interface) ;",
         "# vlan = vlanid ; interface = alias de l'interface (set alias), à défaut son nom ;",
         "# à remplacer à la main s'il ne dit rien.",
     ),
     "stormshield": (
-        "# Réseaux des interfaces SNS à adresse statique (fichier Network). zone toujours vide",
-        "# (pas de zones SNS) ; vlan = Tag de l'interface VLAN ; interface = Name de l'interface.",
+        "# Réseaux des interfaces SNS à adresse statique (fichier Network) ;",
+        "# vlan = Tag de l'interface VLAN ; interface = Name de l'interface.",
     ),
 }
 
@@ -44,8 +43,8 @@ class Ligne:
     reseau: str
     interface: str
     alias: str
+    # Zone FortiGate de l'interface : seulement rappelée en commentaire de ligne.
     zone_fortigate: str | None
-    zone: str | None
     vlan: int | None = None
     desactivee: bool = False
     colonne: str | None = None
@@ -59,15 +58,9 @@ class Ligne:
         """Interface FortiGate sans `set alias` : son nom technique est écrit à la place."""
         return self.colonne is not None and not self.alias
 
-    @property
-    def zone_non_traduite(self) -> bool:
-        return self.zone_fortigate is not None and self.zone is None
 
-
-def reseaux_connectes(
-    texte: str, contextes: Sequence[str], correspondances: Mapping[str, str]
-) -> tuple[Ligne, ...]:
-    """Une ligne par interface qui porte une IP ; zone FortiGate traduite par contextes.txt."""
+def reseaux_connectes(texte: str) -> tuple[Ligne, ...]:
+    """Une ligne par interface qui porte une IP."""
     decoupe = blocs(texte, _SECTIONS)
     if not decoupe.get("system interface"):
         raise ErreurLecture("Aucune section « config system interface » dans l'export.")
@@ -95,7 +88,6 @@ def reseaux_connectes(
                 interface=nom,
                 alias=alias,
                 zone_fortigate=zone_fortigate,
-                zone=_traduire(zone_fortigate, contextes, correspondances) if zone_fortigate else None,
                 vlan=int(vlanid) if vlanid.isdigit() else None,
                 colonne=alias or nom,
             )
@@ -122,7 +114,6 @@ def reseaux_sns(texte: str) -> tuple[Ligne, ...]:
                     interface=nom,
                     alias=section,
                     zone_fortigate=None,
-                    zone=None,
                     vlan=int(tag) if tag.isdigit() else None,
                     desactivee=interface.get("State") == "0",
                 )
@@ -130,18 +121,9 @@ def reseaux_sns(texte: str) -> tuple[Ligne, ...]:
     return tuple(lignes)
 
 
-def _traduire(nom: str, contextes: Sequence[str], correspondances: Mapping[str, str]) -> str | None:
-    cle = cle_correspondance(nom)
-    if cle in correspondances:
-        return correspondances[cle]
-    if cle in contextes:
-        return cle
-    return None
-
-
-def _champs(ligne: Ligne, site: str, zone: str | None = None) -> str:
+def _champs(ligne: Ligne, site: str) -> str:
     vlan = "" if ligne.vlan is None else str(ligne.vlan)
-    return f"{ligne.reseau};{site};{zone or ligne.zone or ''};{vlan};{ligne.nom_csv}"
+    return f"{ligne.reseau};{site};{vlan};{ligne.nom_csv}"
 
 
 def _remarques(lignes: Sequence[Ligne]) -> dict[str, str]:
@@ -170,7 +152,6 @@ def ecrire_reseaux(
     lignes: Sequence[Ligne],
     site: str,
     source: str,
-    contextes: Sequence[str],
     constructeur: str = "fortigate",
 ) -> str:
     site = site.strip().lower()
@@ -190,12 +171,6 @@ def ecrire_reseaux(
         if ligne.reseau in vus:
             a_completer.append(f"# {ligne.reseau} : déjà déclaré, ignoré — {origine}")
             continue
-        if ligne.zone_non_traduite:
-            a_completer.append(
-                f"# {_champs(ligne, site, '?')}  — {origine} : "
-                f"ajouter « <zone> = {ligne.zone_fortigate} » dans contextes.txt"
-            )
-            continue
         if ligne.desactivee:
             a_completer.append(f"# {_champs(ligne, site)}  — {origine} : interface désactivée")
             continue
@@ -203,7 +178,7 @@ def ecrire_reseaux(
         corps.append(f"{_champs(ligne, site)}  # {origine}{remarques.get(ligne.interface, '')}")
     texte = "\n".join([*entete, *corps, *(["", "# À compléter :", *a_completer] if a_completer else [])])
     texte += "\n"
-    analyser_reseaux(texte, contextes)
+    analyser_reseaux(texte)
     return texte
 
 
@@ -223,21 +198,20 @@ def completer_reseaux(
     lignes: Sequence[Ligne],
     site: str,
     source: str,
-    contextes: Sequence[str],
     constructeur: str = "fortigate",
 ) -> Completion:
     """Complète un reseaux.csv existant sans toucher aux lignes déjà renseignées.
 
     - réseaux absents : ajoutés en fin de fichier ;
-    - lignes du même site sans interface (ancien format) : réécrites avec zone, VLAN et
-      interface de l'équipement, l'ancienne zone gardée en commentaire si elle change ;
+    - lignes du même site sans interface : réécrites avec VLAN et interface de l'équipement ;
     - lignes FortiGate qui portent encore le nom technique de l'interface : nom remplacé par
       l'alias (une interface renommée à la main n'est pas touchée) ;
-    - en-tête à 3 ou 4 colonnes : passé à `reseau;site;zone;vlan;interface`.
+    - ancien en-tête avec colonne zone : passé à `reseau;site;vlan;interface`, la colonne zone
+      retirée de chaque ligne.
     Les autres lignes, commentaires et les sites saisis à la main restent tels quels.
     """
     site = site.strip().lower()
-    entrees = {entree.reseau: entree for entree in analyser_reseaux(existant, contextes).entrees}
+    entrees = {entree.reseau: entree for entree in analyser_reseaux(existant).entrees}
     remarques = _remarques(lignes)
     lignes_texte = existant.splitlines()
     position = _positions(lignes_texte)
@@ -247,16 +221,14 @@ def completer_reseaux(
     ecartees: list[str] = []
     migrees: list[str] = []
     alias_appliques: list[str] = []
+    reecrites: set[int] = set()
     for ligne in lignes:
         origine = _origine(ligne, constructeur)
         reseau = ipaddress.ip_network(ligne.reseau, strict=False)
-        if ligne.zone_non_traduite:
-            ecartees.append(f"{ligne.reseau} ({ligne.zone_fortigate}) : zone non traduite")
-            continue
         if ligne.desactivee:
             ecartees.append(f"{ligne.reseau} ({origine}) : interface désactivée")
             continue
-        voulu = Entree(reseau=reseau, site=site, zone=ligne.zone, vlan=ligne.vlan, interface=ligne.nom_csv)
+        voulu = Entree(reseau=reseau, site=site, vlan=ligne.vlan, interface=ligne.nom_csv)
         existante = entrees.get(reseau)
         commentaire = f"  # {origine}{remarques.get(ligne.interface, '')}"
         if existante is None:
@@ -264,37 +236,35 @@ def completer_reseaux(
             entrees[reseau] = voulu
             continue
         if existante.interface is None and existante.site == site and reseau in position:
-            ancienne = _zone_ecrite(lignes_texte[position[reseau]])
-            if ancienne and ancienne != (ligne.zone or ""):
-                commentaire += f" — ancienne zone : {ancienne}"
             lignes_texte[position[reseau]] = _champs(ligne, site) + commentaire
+            reecrites.add(position[reseau])
             migrees.append(f"{reseau} ({origine})")
             entrees[reseau] = voulu
             continue
         vlan_contraire = ligne.vlan is not None and existante.vlan not in (None, ligne.vlan)
         if (
             existante.interface == ligne.interface != ligne.nom_csv
-            and (existante.site, existante.zone) == (site, ligne.zone)
+            and existante.site == site
             and not vlan_contraire
             and reseau in position
         ):
-            ancienne = re.search(r" — ancienne zone : \S+", lignes_texte[position[reseau]])
-            lignes_texte[position[reseau]] = _champs(ligne, site) + commentaire + (ancienne.group(0) if ancienne else "")
+            lignes_texte[position[reseau]] = _champs(ligne, site) + commentaire
+            reecrites.add(position[reseau])
             alias_appliques.append(f"{reseau} : {ligne.interface} → {ligne.nom_csv}")
             entrees[reseau] = voulu
             continue
-        memes = (existante.site, existante.zone, existante.interface) == (site, ligne.zone, ligne.nom_csv)
+        memes = (existante.site, existante.interface) == (site, ligne.nom_csv)
         if memes and not vlan_contraire:
             presentes.append(f"{reseau} ({origine})")
         else:
             differentes.append(f"{reseau} : fichier {_decrire(existante)}, interface {origine} {_decrire(voulu)}")
     if not (ajoutees or migrees or alias_appliques):
         return Completion(existant, (), tuple(presentes), tuple(differentes), tuple(ecartees))
-    _passer_en_5_colonnes(lignes_texte)
+    _retirer_zone(lignes_texte, reecrites)
     texte = "\n".join(lignes_texte) + "\n"
     if ajoutees:
         texte += "\n".join(["", f"# Ajouté par fwclean reseaux --ajouter depuis {source} :", *ajoutees]) + "\n"
-    analyser_reseaux(texte, contextes)
+    analyser_reseaux(texte)
     return Completion(
         texte,
         tuple(ajoutees),
@@ -308,7 +278,7 @@ def completer_reseaux(
 
 def _decrire(entree: Entree) -> str:
     vlan = "" if entree.vlan is None else str(entree.vlan)
-    return f"{entree.site};{entree.zone or ''};{vlan};{entree.interface or ''}"
+    return f"{entree.site};{vlan};{entree.interface or ''}"
 
 
 def _donnees(brut: str) -> list[str]:
@@ -331,21 +301,27 @@ def _positions(lignes: Sequence[str]) -> dict:
     return positions
 
 
-def _zone_ecrite(brut: str) -> str:
-    champs = _donnees(brut)
-    return champs[2].lower() if len(champs) > 2 else ""
-
-
-def _passer_en_5_colonnes(lignes: list[str]) -> None:
-    """Premier en-tête remplacé par reseau;site;zone;vlan;interface (les lignes plus courtes restent lues)."""
+def _retirer_zone(lignes: list[str], reecrites: set[int]) -> None:
+    """Ancien en-tête avec colonne zone : en-tête et lignes (hors `reecrites`) passés à 4 colonnes."""
+    entete: tuple[str, ...] | None = None
     for index, brut in enumerate(lignes):
         champs = _donnees(brut)
         if not champs:
             continue
-        if tuple(champ.lower() for champ in champs) in ENTETES:
-            reste = brut[len(brut.split("#", 1)[0].rstrip()) :]
+        cle = tuple(champ.lower() for champ in champs)
+        reste = brut[len(brut.split("#", 1)[0].rstrip()) :]
+        if entete is None:
+            if cle not in ENTETES or "zone" not in cle:
+                return
+            entete = cle
             lignes[index] = ";".join(ENTETE_INTERFACE) + reste
-        return
+            continue
+        if cle in ENTETES or index in reecrites:
+            continue
+        position = entete.index("zone")
+        if len(champs) > position:
+            del champs[position]
+        lignes[index] = ";".join(champs) + reste
 
 
 def _origine(ligne: Ligne, constructeur: str) -> str:

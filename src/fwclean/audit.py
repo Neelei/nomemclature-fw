@@ -56,13 +56,12 @@ MOTIF_ORPHELIN = "aucune reference"
 
 def auditer(
     inventaire: Inventaire,
-    contextes: Sequence[str],
     referentiel: Referentiel | None = None,
 ) -> Resultat:
     referentiel = referentiel or Referentiel()
     sites = referentiel.sites
     interfaces = referentiel.interfaces
-    localisateur = Localisateur(inventaire, contextes, referentiel)
+    localisateur = Localisateur(inventaire, referentiel)
     refs = _index_references(inventaire)
 
     def limite(sorte: str) -> int:
@@ -74,7 +73,6 @@ def auditer(
         return est_conforme_objet(
             objet.nom if nom is None else nom,
             objet.sorte,
-            contextes,
             sites,
             limite(objet.sorte),
             signature,
@@ -181,7 +179,6 @@ def auditer(
                 objet.nom,
                 PREFIXE[objet.sorte],
                 localisation,
-                contextes,
                 limite(objet.sorte),
                 interfaces,
             )
@@ -236,7 +233,7 @@ def auditer(
             nouveau = rendre_unique(proposer_service(base, objet.empreinte, limite(objet.sorte)), prises, limite(objet.sorte))
         else:
             propose = proposer_objet(
-                base, PREFIXE[objet.sorte], localisation, contextes, limite(objet.sorte), interfaces
+                base, PREFIXE[objet.sorte], localisation, limite(objet.sorte), interfaces
             )
             protege = len(localisation.interface) if objet.sorte == "reseau" and localisation else 0
             nouveau = rendre_unique(propose, prises, limite(objet.sorte), protege)

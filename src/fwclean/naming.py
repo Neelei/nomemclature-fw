@@ -1,11 +1,10 @@
-"""Convention de nommage et liste des zones (contextes.txt)."""
+"""Convention de nommage."""
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Collection, Sequence
-from pathlib import Path
+from collections.abc import Collection
 from typing import NamedTuple
 
 from fwclean.model import ErreurLecture
@@ -32,18 +31,15 @@ RESERVES = frozenset({CTX, MULTI})
 class Localisation(NamedTuple):
     """Site et interface d'un objet (minuscules) ; VLAN et `exact` entrent dans les noms réseau.
 
-    `zone` reste lue dans reseaux.csv (inventaire) et sert à retirer l'ancienne zone d'un
-    nom déjà appliqué ; elle n'entre plus dans les noms proposés.
     `exact` : l'objet réseau est le réseau même de l'interface (pas un sous-réseau).
     """
 
     site: str
     interface: str
-    zone: str | None = None
     vlan: int | None = None
     exact: bool = False
 
-# Types sans site ni zone : {PREFIXE}_{DETAIL} (services : SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}).
+# Types sans site ni interface : {PREFIXE}_{DETAIL} (services : SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}).
 SANS_LOCALISATION = frozenset({"service", "protocole", "groupe-services", "calendrier"})
 
 # Sortes nommées SVC_{PROTOCOLE}_{PORTS}_{LIBELLE} ; « protocole » : objet [Protocol] SNS (ipproto).
@@ -105,61 +101,8 @@ LIBELLE_CONSTRUCTEUR = {
 _FORME = re.compile(r"[A-Z0-9]+(?:[-_.][A-Z0-9]+)*")
 
 
-def lire_contextes(chemin: Path) -> tuple[str, ...]:
-    return analyser_contextes(chemin.read_text(encoding="utf-8"))
-
-
-def analyser_contextes(texte: str) -> tuple[str, ...]:
-    """Lit les zones FortiGate courtes : clés en minuscules, matching ensuite case-insensitive.
-
-    CTX et MULTI sont toujours valables ; s'ils figurent dans le fichier, ils sont ignorés.
-    """
-    zones, _correspondances = _analyser_contextes(texte)
-    return zones
-
-
-def lire_correspondances(chemin: Path) -> dict[str, str]:
-    """Zones FortiGate → zone courte, d'après les lignes « zone = nom, nom »."""
-    _zones, correspondances = _analyser_contextes(chemin.read_text(encoding="utf-8"))
-    return correspondances
-
-
-def cle_correspondance(nom: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", nom.lower())
-
-
-def _analyser_contextes(texte: str) -> tuple[tuple[str, ...], dict[str, str]]:
-    vus: list[str] = []
-    correspondances: dict[str, str] = {}
-    for brut in texte.splitlines():
-        ligne = brut.split("#", 1)[0].strip()
-        if not ligne:
-            continue
-        zone, _egal, noms = ligne.partition("=")
-        zone = zone.strip().lower()
-        if not re.fullmatch(r"[a-z0-9]+", zone):
-            raise ErreurLecture(f"Contexte invalide : {zone}")
-        if zone not in vus and zone not in RESERVES:
-            vus.append(zone)
-        for nom in noms.split(","):
-            cle = cle_correspondance(nom)
-            if not cle:
-                continue
-            if correspondances.get(cle, zone) != zone:
-                raise ErreurLecture(f"contextes.txt : « {nom.strip()} » associé à deux zones.")
-            correspondances[cle] = zone
-    if not vus:
-        raise ErreurLecture("La liste de contextes est vide.")
-    return tuple(vus), correspondances
-
-
-def zone_connue(jeton: str, contextes: Sequence[str]) -> bool:
-    cle = jeton.lower()
-    return cle in RESERVES or cle in {contexte.lower() for contexte in contextes}
-
-
 def normaliser_chaine(valeur: str) -> str:
-    """Jetons internes en minuscules (matching contextes, en-têtes CSV)."""
+    """Jetons internes en minuscules (matching des noms, en-têtes CSV)."""
     decompose = unicodedata.normalize("NFKD", valeur)
     sans_accent = "".join(c for c in decompose if not unicodedata.combining(c))
     return re.sub(r"[^a-z0-9]+", "-", sans_accent.lower()).strip("-")
@@ -227,11 +170,6 @@ def site_valide(jeton: str, sites: Collection[str]) -> bool:
     return cle == MULTI or cle in {site.lower() for site in sites}
 
 
-def zone_valide(jeton: str, contextes: Sequence[str]) -> bool:
-    cle = jeton.lower()
-    return cle == MULTI or cle in {contexte.lower() for contexte in contextes}
-
-
 _SEGMENT_VLAN = re.compile(r"v\d+")
 
 
@@ -246,7 +184,6 @@ def segments_reseau(localisation: Localisation) -> list[str]:
 def est_conforme_objet(
     nom: str,
     sorte: str,
-    contextes: Sequence[str],
     sites: Collection[str] = (),
     limite: int = LONGUEUR_MAX,
     signature: tuple[str, str] | None = None,
@@ -314,7 +251,6 @@ def _sequence(jetons: list[str], cherches: list[str]) -> int | None:
 def _detail_depuis_nom(
     nom: str,
     prefixe: str,
-    contextes: Sequence[str],
     localisation: Localisation | None = None,
     interfaces: Collection[str] = (),
 ) -> list[str]:
@@ -347,7 +283,6 @@ def _detail_depuis_nom(
             or _VLAN.fullmatch(reste[0])
             or reste[0] in connues
             or reste[0] in RESERVES
-            or zone_connue(reste[0], contextes)
         ):
             reste = reste[1:]
         jetons = "-".join(reste).split("-")
@@ -368,8 +303,6 @@ def _detail_depuis_nom(
             if position is not None:
                 jetons = jetons[:position] + jetons[position + len(cherches) :]
         a_retirer = [site] if site else []
-        if reseau and localisation is not None and localisation.zone:
-            a_retirer.append(localisation.zone)
         detail: list[str] = []
         for jeton in jetons:
             if jeton in a_retirer:
@@ -404,7 +337,6 @@ def proposer_objet(
     nom: str,
     prefixe: str,
     localisation: Localisation | None = None,
-    contextes: Sequence[str] = (),
     limite: int = LONGUEUR_MAX,
     interfaces: Collection[str] = (),
 ) -> str:
@@ -414,7 +346,7 @@ def proposer_objet(
     - autre objet localisé : {SITE}_{PREFIXE}_{INTERFACE}_{DETAIL} ;
     - sans localisation (services, calendriers…) : {PREFIXE}_{DETAIL}.
     """
-    detail = _detail_depuis_nom(nom, prefixe, contextes, localisation, interfaces)
+    detail = _detail_depuis_nom(nom, prefixe, localisation, interfaces)
     if localisation is None:
         return tronquer(SEP.join([prefixe, "-".join(detail) or "nd"]).upper(), limite)
     interface = localisation.interface

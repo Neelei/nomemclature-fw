@@ -2,7 +2,6 @@ from fwclean.contenu import empreinte_service
 from fwclean.naming import (
     Localisation,
     est_conforme_objet,
-    lire_contextes,
     longueur_max,
     normaliser_interface,
     proposer_objet,
@@ -16,30 +15,9 @@ SITES = ("gras", "siege")
 INTERFACES = ("dmz", "serveurs", "labo-ana", "wan", "lan-users")
 
 
-def test_contextes_par_defaut(racine):
-    assert lire_contextes(racine / "contextes.txt") == (
-        "lan",
-        "dmz",
-        "wan",
-        "mgmt",
-        "bastion",
-        "users",
-        "preprodfr",
-        "preprodth",
-        "invite",
-        "mobile",
-    )
-
-
-def test_ctx_et_multi_ignores_dans_contextes(tmp_path):
-    fichier = tmp_path / "contextes.txt"
-    fichier.write_text("lan\nctx\nMULTI\n", encoding="utf-8")
-    assert lire_contextes(fichier) == ("lan",)
-
-
-def test_objets_conformes_et_plafond(contextes):
+def test_objets_conformes_et_plafond():
     def conforme(nom, sorte="hote", sites=SITES, attendu=None):
-        return est_conforme_objet(nom, sorte, contextes, sites, interfaces=INTERFACES, attendu=attendu)
+        return est_conforme_objet(nom, sorte, sites, interfaces=INTERFACES, attendu=attendu)
 
     assert conforme("SIEGE_HST_SERVEURS_ZABBIXSRV")
     assert conforme("SIEGE_HST_LABO-ANA_PC01")
@@ -66,10 +44,10 @@ def test_objets_conformes_et_plafond(contextes):
     assert not conforme(nom + "B")
 
 
-def test_conformite_contre_l_interface_attendue(contextes):
+def test_conformite_contre_l_interface_attendue():
     def conforme(nom, attendu, sorte="hote"):
         sites = (*SITES, "hq")
-        return est_conforme_objet(nom, sorte, contextes, sites, interfaces=INTERFACES, attendu=attendu)
+        return est_conforme_objet(nom, sorte, sites, interfaces=INTERFACES, attendu=attendu)
 
     dmz = Localisation("siege", "dmz")
     assert conforme("SIEGE_HST_DMZ_WEB", dmz)
@@ -88,19 +66,19 @@ def _service(*elements):
 HTTPS = _service(("tcp", [(443, 443)]))
 
 
-def test_services_calendriers_sans_site_ni_zone(contextes):
-    assert est_conforme_objet("SVC_TCP_443_HTTPS", "service", contextes, signature=("TCP", "443"))
-    assert est_conforme_objet("SVC_TCP_443", "service", contextes, signature=("TCP", "443"))
-    assert est_conforme_objet("SG_ACTIVE-DIRECTORY", "groupe-services", contextes)
-    assert not est_conforme_objet("SGRP_ACTIVE-DIRECTORY", "groupe-services", contextes)
-    assert est_conforme_objet("SCH_BUREAU", "calendrier", contextes)
-    assert not est_conforme_objet("SVC_HTTPS", "service", contextes, signature=("TCP", "443"))
-    assert not est_conforme_objet("SVC_UDP_443_HTTPS", "service", contextes, signature=("TCP", "443"))
-    assert not est_conforme_objet("SVC_TCP_8443_HTTPS", "service", contextes, signature=("TCP", "443"))
-    assert not est_conforme_objet("SVC_TCP_443_HT.TPS", "service", contextes, signature=("TCP", "443"))
-    assert not est_conforme_objet("SG_SIEGE_DMZ_WEB", "groupe-services", contextes, SITES)
-    assert not est_conforme_objet("SCH_CTX_LAN_BUREAU", "calendrier", contextes)
-    assert not est_conforme_objet("SIEGE_HST_LAN_A.B", "hote", contextes, SITES)
+def test_services_calendriers_sans_site_ni_zone():
+    assert est_conforme_objet("SVC_TCP_443_HTTPS", "service", signature=("TCP", "443"))
+    assert est_conforme_objet("SVC_TCP_443", "service", signature=("TCP", "443"))
+    assert est_conforme_objet("SG_ACTIVE-DIRECTORY", "groupe-services")
+    assert not est_conforme_objet("SGRP_ACTIVE-DIRECTORY", "groupe-services")
+    assert est_conforme_objet("SCH_BUREAU", "calendrier")
+    assert not est_conforme_objet("SVC_HTTPS", "service", signature=("TCP", "443"))
+    assert not est_conforme_objet("SVC_UDP_443_HTTPS", "service", signature=("TCP", "443"))
+    assert not est_conforme_objet("SVC_TCP_8443_HTTPS", "service", signature=("TCP", "443"))
+    assert not est_conforme_objet("SVC_TCP_443_HT.TPS", "service", signature=("TCP", "443"))
+    assert not est_conforme_objet("SG_SIEGE_DMZ_WEB", "groupe-services", SITES)
+    assert not est_conforme_objet("SCH_CTX_LAN_BUREAU", "calendrier")
+    assert not est_conforme_objet("SIEGE_HST_LAN_A.B", "hote", SITES)
 
 
 def test_signature_des_services():
@@ -128,24 +106,24 @@ def test_services_gardent_leur_libelle_avec_protocole_et_port():
     assert proposer_service("PING", _service(("icmp", [(8, 8)]))) == "SVC_ICMP_8_PING"
 
 
-def test_reseaux_vlan_interface(contextes):
-    exact = Localisation("hq", "cabines", "lan", 25, exact=True)
-    assert proposer_objet("Res-VLAN25", "NET", exact, contextes) == "HQ_NET_V25_CABINES"
+def test_reseaux_vlan_interface():
+    exact = Localisation("hq", "cabines", 25, exact=True)
+    assert proposer_objet("Res-VLAN25", "NET", exact) == "HQ_NET_V25_CABINES"
     # Zone réservée à l'inventaire : jamais dans le nom, même renseignée.
-    sans_zone = Localisation("hq", "cabines", None, 25, exact=True)
-    assert proposer_objet("Res-VLAN25", "NET", sans_zone, contextes) == "HQ_NET_V25_CABINES"
+    sans_zone = Localisation("hq", "cabines", 25, exact=True)
+    assert proposer_objet("Res-VLAN25", "NET", sans_zone) == "HQ_NET_V25_CABINES"
     # Port physique sans VLAN : pas de segment V.
-    port = Localisation("hq", "cabines", "lan", None, exact=True)
-    assert proposer_objet("cabines", "NET", port, contextes) == "HQ_NET_CABINES"
+    port = Localisation("hq", "cabines", None, exact=True)
+    assert proposer_objet("cabines", "NET", port) == "HQ_NET_CABINES"
     # Sous-réseau : l'ancien nom reste en détail après l'interface, sans mention de VLAN.
     sous_reseau = exact._replace(exact=False)
-    assert proposer_objet("Imprimantes [vlan25]", "NET", sous_reseau, contextes) == (
+    assert proposer_objet("Imprimantes [vlan25]", "NET", sous_reseau) == (
         "HQ_NET_V25_CABINES-IMPRIMANTES"
     )
-    assert proposer_objet("VLAN-25", "NET", sous_reseau, contextes) == "HQ_NET_V25_CABINES"
+    assert proposer_objet("VLAN-25", "NET", sous_reseau) == "HQ_NET_V25_CABINES"
 
     def conforme(nom, attendu):
-        return est_conforme_objet(nom, "reseau", contextes, ("hq",), interfaces=("cabines",), attendu=attendu)
+        return est_conforme_objet(nom, "reseau", ("hq",), interfaces=("cabines",), attendu=attendu)
 
     assert conforme("HQ_NET_V25_CABINES", exact)
     assert not conforme("HQ_NET_V25_CABINES-IMPRIMANTES", exact)
@@ -165,75 +143,75 @@ def test_reseaux_vlan_interface(contextes):
     assert not conforme("HQ_NET_V25_AUTRE", None)
 
 
-def test_interface_avec_tiret_bas_ou_espaces(contextes):
+def test_interface_avec_tiret_bas_ou_espaces():
     labo = Localisation("hq", normaliser_interface("LABO_ANA"))
     assert labo.interface == "labo-ana"
     assert normaliser_interface("WIFI INVITE VLAN-42") == "wifi-invite-vlan-42"
     assert normaliser_interface("Wi‑Fi GUEST") == "wi-fi-guest"
-    assert proposer_objet("PC01", "HST", labo, contextes) == "HQ_HST_LABO-ANA_PC01"
-    nouveau = proposer_objet("analyseur_labo_ana", "HST", labo, contextes)
+    assert proposer_objet("PC01", "HST", labo) == "HQ_HST_LABO-ANA_PC01"
+    nouveau = proposer_objet("analyseur_labo_ana", "HST", labo)
     assert nouveau == "HQ_HST_LABO-ANA_ANALYSEUR"
-    assert est_conforme_objet(nouveau, "hote", contextes, ("hq",), interfaces=("labo-ana",), attendu=labo)
+    assert est_conforme_objet(nouveau, "hote", ("hq",), interfaces=("labo-ana",), attendu=labo)
 
 
-def test_proposition_de_noms(contextes):
+def test_proposition_de_noms():
     dmz = Localisation("siege", "dmz")
     lan = Localisation("siege", "lan-users")
-    assert proposer_objet("Web_DMZ", "HST", dmz, contextes) == "SIEGE_HST_DMZ_WEB"
-    assert proposer_objet("SIEGE_zabbix", "HST", lan, contextes) == "SIEGE_HST_LAN-USERS_ZABBIX"
-    assert proposer_objet("HST-DMZ-WEB-01", "HST", dmz, contextes) == "SIEGE_HST_DMZ_WEB-01"
-    assert proposer_objet("GRAS_HST_DMZ_WEB-01", "HST", dmz, contextes) == "SIEGE_HST_DMZ_WEB-01"
-    assert proposer_objet("HST_GRAS_DMZ_WEB-01", "HST", dmz, contextes) == "SIEGE_HST_DMZ_WEB-01"
-    assert proposer_objet("SIEGE_HST_web", "HST", dmz, contextes) == "SIEGE_HST_DMZ_WEB"
-    assert proposer_objet("Hôte_DMZ", "HST", lan, contextes) == "SIEGE_HST_LAN-USERS_HOTE-DMZ"
-    assert proposer_objet("SIEGE_HST_LAN_ZABBIX_SRV", "HST", lan, contextes) == "SIEGE_HST_LAN-USERS_ZABBIX-SRV"
+    assert proposer_objet("Web_DMZ", "HST", dmz) == "SIEGE_HST_DMZ_WEB"
+    assert proposer_objet("SIEGE_zabbix", "HST", lan) == "SIEGE_HST_LAN-USERS_ZABBIX"
+    assert proposer_objet("HST-DMZ-WEB-01", "HST", dmz) == "SIEGE_HST_DMZ_WEB-01"
+    assert proposer_objet("GRAS_HST_DMZ_WEB-01", "HST", dmz) == "SIEGE_HST_DMZ_WEB-01"
+    assert proposer_objet("HST_GRAS_DMZ_WEB-01", "HST", dmz) == "SIEGE_HST_DMZ_WEB-01"
+    assert proposer_objet("SIEGE_HST_web", "HST", dmz) == "SIEGE_HST_DMZ_WEB"
+    assert proposer_objet("Hôte_DMZ", "HST", lan) == "SIEGE_HST_LAN-USERS_HOTE-DMZ"
+    assert proposer_objet("SIEGE_HST_LAN_ZABBIX_SRV", "HST", lan) == "SIEGE_HST_LAN-USERS_ZABBIX-SRV"
     groupe = Localisation("hq", "multi")
-    assert proposer_objet("Serveurs", "GRP", groupe, contextes) == "HQ_GRP_MULTI_SERVEURS"
-    assert proposer_objet("Bureau", "SCH", None, contextes) == "SCH_BUREAU"
+    assert proposer_objet("Serveurs", "GRP", groupe) == "HQ_GRP_MULTI_SERVEURS"
+    assert proposer_objet("Bureau", "SCH", None) == "SCH_BUREAU"
 
 
-def test_anciens_formats_reconnus(contextes):
+def test_anciens_formats_reconnus():
     """Noms du lot 01 déjà appliqués sur le lab : ni la zone ni le VLAN ne passent dans le détail."""
-    reseau = Localisation("hq", "vlan-11", "lan", 11)
-    assert proposer_objet("HQ_NET_LAN_VLAN11-RES", "NET", reseau, contextes) == "HQ_NET_V11_VLAN-11-RES"
-    assert proposer_objet("NET_HQ_LAN_VLAN11-RES", "NET", reseau, contextes) == "HQ_NET_V11_VLAN-11-RES"
+    reseau = Localisation("hq", "vlan-11", 11)
+    assert proposer_objet("HQ_NET_LAN_VLAN11-RES", "NET", reseau) == "HQ_NET_V11_VLAN-11-RES"
+    assert proposer_objet("NET_HQ_LAN_VLAN11-RES", "NET", reseau) == "HQ_NET_V11_VLAN-11-RES"
     cabines = Localisation("hq", "cabines")
-    assert proposer_objet("HQ_GRP_LAN_IMPRIMANTES", "GRP", cabines, contextes) == "HQ_GRP_CABINES_IMPRIMANTES"
-    assert proposer_objet("HQ_HST_LOOP_FGT", "HST", cabines, contextes) == "HQ_HST_CABINES_FGT"
-    assert proposer_objet("HQ_HST_MULTI_X", "HST", cabines, contextes) == "HQ_HST_CABINES_X"
+    assert proposer_objet("HQ_GRP_LAN_IMPRIMANTES", "GRP", cabines) == "HQ_GRP_CABINES_IMPRIMANTES"
+    assert proposer_objet("HQ_HST_LOOP_FGT", "HST", cabines) == "HQ_HST_CABINES_FGT"
+    assert proposer_objet("HQ_HST_MULTI_X", "HST", cabines) == "HQ_HST_CABINES_X"
     # Forme avec zone relue : l'interface en tête du dernier segment n'est pas répétée, zone retirée.
-    sous_reseau = Localisation("hq", "cabines", "lan", 16)
-    assert proposer_objet("HQ_NET_LAN_V16_CABINES-IMPRIMANTES", "NET", sous_reseau, contextes, interfaces=("cabines",)) == (
+    sous_reseau = Localisation("hq", "cabines", 16)
+    assert proposer_objet("HQ_NET_LAN_V16_CABINES-IMPRIMANTES", "NET", sous_reseau, interfaces=("cabines",)) == (
         "HQ_NET_V16_CABINES-IMPRIMANTES"
     )
     nom = "HQ_NET_V16_CABINES-IMPRIMANTES"
-    assert proposer_objet(nom, "NET", sous_reseau, contextes, interfaces=("cabines",)) == nom
-    autre = Localisation("hq", "cabines-bis", "lan", 17)
-    assert proposer_objet(nom, "NET", autre, contextes, interfaces=("cabines",)) == (
+    assert proposer_objet(nom, "NET", sous_reseau, interfaces=("cabines",)) == nom
+    autre = Localisation("hq", "cabines-bis", 17)
+    assert proposer_objet(nom, "NET", autre, interfaces=("cabines",)) == (
         "HQ_NET_V17_CABINES-BIS-IMPRIMANTES"
     )
 
 
-def test_groupes_de_services_et_calendriers(contextes):
-    assert proposer_objet("Active Directory", "SG", None, contextes) == "SG_ACTIVE-DIRECTORY"
-    assert proposer_objet("SGRP_CTX_DMZ_WEB", "SG", None, contextes) == "SG_WEB"
-    assert proposer_objet("SG_CTX_DMZ_WEB", "SG", None, contextes) == "SG_WEB"
+def test_groupes_de_services_et_calendriers():
+    assert proposer_objet("Active Directory", "SG", None) == "SG_ACTIVE-DIRECTORY"
+    assert proposer_objet("SGRP_CTX_DMZ_WEB", "SG", None) == "SG_WEB"
+    assert proposer_objet("SG_CTX_DMZ_WEB", "SG", None) == "SG_WEB"
 
 
-def test_ancien_prefixe_sgrp_renomme_en_sg(contextes):
-    assert not est_conforme_objet("SGRP_X", "groupe-services", contextes)
-    assert proposer_objet("SGRP_X", "SG", None, contextes) == "SG_X"
-    assert proposer_objet("SGRP_ACTIVE-DIRECTORY", "SG", None, contextes) == "SG_ACTIVE-DIRECTORY"
-    assert proposer_objet("Bureau", "SCH", None, contextes) == "SCH_BUREAU"
+def test_ancien_prefixe_sgrp_renomme_en_sg():
+    assert not est_conforme_objet("SGRP_X", "groupe-services")
+    assert proposer_objet("SGRP_X", "SG", None) == "SG_X"
+    assert proposer_objet("SGRP_ACTIVE-DIRECTORY", "SG", None) == "SG_ACTIVE-DIRECTORY"
+    assert proposer_objet("Bureau", "SCH", None) == "SCH_BUREAU"
 
 
-def test_limites_fortigate(contextes):
+def test_limites_fortigate():
     assert longueur_max("fortigate", "calendrier") == 31
     assert longueur_max("fortigate", "hote") == 79
     assert longueur_max("stormshield", "calendrier") == 79
     nom = "SCH_" + "X" * 28
-    assert est_conforme_objet(nom, "calendrier", contextes)
-    assert not est_conforme_objet(nom, "calendrier", contextes, (), 31)
+    assert est_conforme_objet(nom, "calendrier")
+    assert not est_conforme_objet(nom, "calendrier", (), 31)
 
 
 def test_troncature_garde_la_structure_et_le_suffixe():
@@ -246,10 +224,10 @@ def test_troncature_garde_la_structure_et_le_suffixe():
     assert rendre_unique("SCH_" + "X" * 30, set(), 31) == "SCH_" + "X" * 27
 
 
-def test_troncature_coupe_le_detail_jamais_l_interface(contextes):
+def test_troncature_coupe_le_detail_jamais_l_interface():
     interface = "centrale-detection-gaz"
-    loc = Localisation("hq", interface, "lan", 25)
-    nom = proposer_objet("tres long detail " * 5, "NET", loc, contextes, 60)
+    loc = Localisation("hq", interface, 25)
+    nom = proposer_objet("tres long detail " * 5, "NET", loc, 60)
     assert nom.startswith("HQ_NET_V25_CENTRALE-DETECTION-GAZ-TRES")
     assert len(nom) <= 60
     assert tronquer("HQ_NET_V25_CENTRALE-DETECTION-GAZ", 30, protege=len(interface)) == (

@@ -50,7 +50,7 @@ def test_audit_laisse_les_natifs_et_les_conserve_en_fusion():
         _objet("service", "ssh_udp", (("udp", ((22, 22, 0, 65535),)),)),
         _objet("service", "Veeam_https", (("tcp", ((9443, 9443, 0, 65535),)),)),
     )
-    resultat = auditer(Inventaire("stormshield", (), objets), ["lan"])
+    resultat = auditer(Inventaire("stormshield", (), objets))
     assert [(item.conserve, item.supprimes) for item in resultat.fusions] == [
         ("https", ("https_admin",))
     ]
@@ -62,6 +62,6 @@ def test_audit_laisse_les_natifs_et_les_conserve_en_fusion():
 
 def test_fortigate_sans_natifs_sns():
     objets = (_objet("service", "https", (("tcp", ((443, 443, 0, 65535),)),)),)
-    resultat = auditer(Inventaire("fortigate", (), objets), ["lan"])
+    resultat = auditer(Inventaire("fortigate", (), objets))
     assert resultat.natifs == ()
     assert [item.nom for item in resultat.retraits] == ["https"]

@@ -177,9 +177,9 @@ def test_vlans_et_genres():
     assert genre_natif("objets.csv", "host,a,10.0.0.1") is None
 
 
-def test_exemple_natif(racine, contextes, referentiel):
+def test_exemple_natif(racine, referentiel):
     inventaire = charger([racine / "examples" / "stormshield-natif"])
-    resultat = auditer(inventaire, contextes, referentiel)
+    resultat = auditer(inventaire, referentiel)
     assert inventaire.constructeur == "stormshield"
     assert len(inventaire.regles) == 9
     assert inventaire.retraits_suspendus is None
@@ -221,7 +221,7 @@ def test_exemple_natif(racine, contextes, referentiel):
     assert fusions[("service", "rdp")] == ("rdp_admin",)
 
 
-def test_groupes_absents_suspendent_les_retraits(racine, tmp_path, contextes, referentiel):
+def test_groupes_absents_suspendent_les_retraits(racine, tmp_path, referentiel):
     dossier = tmp_path / "sns"
     shutil.copytree(racine / "examples" / "stormshield-natif", dossier)
     (dossier / "router").write_text("[Routeur_Principal]\ngw=passerelle_wan\n", encoding="utf-8")
@@ -230,7 +230,7 @@ def test_groupes_absents_suspendent_les_retraits(racine, tmp_path, contextes, re
     assert inventaire.retraits_suspendus is None
     assert any("non lus (non gérés)" in message and "router" in message for message in inventaire.avertissements)
     (dossier / "servicegroup").unlink()
-    resultat = auditer(charger([dossier]), contextes, referentiel)
+    resultat = auditer(charger([dossier]), referentiel)
     assert resultat.inventaire.retraits_suspendus.startswith("fichier servicegroup non lu")
     assert resultat.retraits == ()
     assert VERIFIER_USAGE not in resultat.inventaire.avertissements
@@ -260,18 +260,17 @@ def test_melanges_refuses(racine):
         charger([natif, racine / "examples" / "fortigate" / "nomenclature.conf"])
 
 
-def test_vlan_et_interface_par_le_referentiel(racine, contextes):
+def test_vlan_et_interface_par_le_referentiel(racine):
     referentiel = analyser_reseaux(
-        "reseau;site;zone;vlan;interface\n"
-        "10.0.0.0/24;siege;lan;99;LAN\n"
-        "10.1.0.0/16;siege;lan;100;SERVEURS\n"
-        "10.1.1.0/24;siege;dmz;;DMZ\n"
-        "10.210.0.0/24;gras;;210;SRV_GRAS\n"
-        "203.0.113.0/24;siege;wan;;out\n",
-        contextes,
+        "reseau;site;vlan;interface\n"
+        "10.0.0.0/24;siege;99;LAN\n"
+        "10.1.0.0/16;siege;100;SERVEURS\n"
+        "10.1.1.0/24;siege;;DMZ\n"
+        "10.210.0.0/24;gras;210;SRV_GRAS\n"
+        "203.0.113.0/24;siege;;out\n"
     )
     assert {str(entree.reseau): entree.vlan for entree in referentiel.entrees}["203.0.113.0/24"] is None
-    resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), contextes, referentiel)
+    resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), referentiel)
     renommages = {item.ancien: item.nouveau for item in resultat.renommages}
     assert renommages["Reseau_Gras"] == "GRAS_NET_V210_SRV-GRAS"
     # Le VLAN est celui de la ligne de reseaux.csv, pas le Tag de l'interface SNS (66 ici).
@@ -286,40 +285,40 @@ def test_vlan_et_interface_par_le_referentiel(racine, contextes):
         "reseau;site;zone;vlan\n10.0.0.0/24;siege;lan;5000\n",
         "reseau;site;zone;vlan\n10.0.0.0/24;siege;lan;10\n10.0.0.0/24;siege;lan;11\n",
         "reseau;site;zone\n10.0.0.0/24;siege;lan;10\n",
+        "reseau;site;vlan;interface\n10.0.0.0/24;siege;10;LAN;X\n",
         "reseau;site;zone;vlan;x\n",
         "reseau;site;zone;vlan;interface;x\n",
     ],
 )
-def test_colonne_vlan_invalide(contextes, texte):
+def test_colonne_vlan_invalide(texte):
     with pytest.raises(ErreurLecture):
-        analyser_reseaux(texte, contextes)
+        analyser_reseaux(texte)
 
 
-def test_reseaux_sns(contextes):
+def test_reseaux_sns():
     lignes = reseaux_sns(NETWORK)
-    assert [(ligne.reseau, ligne.interface, ligne.zone, ligne.vlan) for ligne in lignes] == [
-        ("203.0.113.0/24", "out", None, None),
-        ("198.51.100.0/24", "out", None, None),
-        ("10.0.0.0/24", "LAN", None, 10),
+    assert [(ligne.reseau, ligne.interface, ligne.vlan) for ligne in lignes] == [
+        ("203.0.113.0/24", "out", None),
+        ("198.51.100.0/24", "out", None),
+        ("10.0.0.0/24", "LAN", 10),
     ]
-    texte = ecrire_reseaux(lignes, "siege", "Network", contextes, "stormshield")
-    assert "reseau;site;zone;vlan;interface" in texte
-    assert "10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)" in texte
-    assert "203.0.113.0/24;siege;;;out  # out (ethernet0)" in texte
+    texte = ecrire_reseaux(lignes, "siege", "Network", "stormshield")
+    assert "reseau;site;vlan;interface" in texte
+    assert "10.0.0.0/24;siege;10;LAN  # LAN (vlan0)" in texte
+    assert "203.0.113.0/24;siege;;out  # out (ethernet0)" in texte
     assert "127.0.0.0" not in texte
 
 
 def test_commande_reseaux_sns(racine, tmp_path, capsys, monkeypatch):
-    shutil.copy(racine / "contextes.txt", tmp_path / "contextes.txt")
     monkeypatch.chdir(tmp_path)
     assert executer(["reseaux", str(racine / "examples" / "stormshield-natif"), "--site", "siege"]) == 0
     sortie = capsys.readouterr().out
-    assert "zone FortiGate non traduite : 0." in sortie
+    assert "Réseaux connectés : 3." in sortie
     assert "Interfaces désactivées, laissées en commentaire : 1." in sortie
     texte = (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
-    assert "10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)" in texte
-    assert "203.0.113.0/24;siege;;;out  # out (ethernet0)" in texte
-    assert "# 10.1.1.0/24;siege;;66;DMZ  — DMZ (vlan1) : interface désactivée" in texte
+    assert "10.0.0.0/24;siege;10;LAN  # LAN (vlan0)" in texte
+    assert "203.0.113.0/24;siege;;out  # out (ethernet0)" in texte
+    assert "# 10.1.1.0/24;siege;66;DMZ  — DMZ (vlan1) : interface désactivée" in texte
     assert executer(["reseaux", str(tmp_path), "--site", "siege", "--ecraser"]) == 2
     assert "aucun fichier Network" in capsys.readouterr().err
 
@@ -332,8 +331,6 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
             str(racine / "examples" / "stormshield-natif"),
             "--sortie",
             str(sortie),
-            "--contextes",
-            str(racine / "contextes.txt"),
             "--reseaux",
             str(racine / "reseaux.exemple.csv"),
         ]
@@ -358,7 +355,6 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
 
 
 def test_reseaux_ajouter_migre_l_ancien_format(racine, tmp_path, capsys, monkeypatch):
-    (tmp_path / "contextes.txt").write_text("lan\ndmz\nwan\n", encoding="utf-8")
     existant = (
         "# Référentiel relu à la main.\n"
         "reseau;site;zone;vlan\n"
@@ -373,11 +369,11 @@ def test_reseaux_ajouter_migre_l_ancien_format(racine, tmp_path, capsys, monkeyp
     texte = (tmp_path / "reseaux.csv").read_text(encoding="utf-8")
     assert texte.startswith(
         "# Référentiel relu à la main.\n"
-        "reseau;site;zone;vlan;interface\n"
-        "10.210.0.0/24;gras;lan;  # site distant ajouté à la main\n"
-        "203.0.113.0/24;siege;;;out  # out (ethernet0) — ancienne zone : dmz\n"
+        "reseau;site;vlan;interface\n"
+        "10.210.0.0/24;gras;  # site distant ajouté à la main\n"
+        "203.0.113.0/24;siege;;out  # out (ethernet0)\n"
     )
-    assert texte.endswith("10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)\n")
+    assert texte.endswith("10.0.0.0/24;siege;10;LAN  # LAN (vlan0)\n")
     assert (
         "Ajoutés : 1, interface complétée : 1, alias appliqué : 0, déjà présents : 0, "
         "différents (non modifiés) : 0, "
@@ -392,39 +388,39 @@ def test_reseaux_ajouter_migre_l_ancien_format(racine, tmp_path, capsys, monkeyp
     assert "--ajouter" in capsys.readouterr().err
 
 
-def test_reseaux_ajouter_ne_touche_pas_aux_lignes_renseignees(contextes):
+def test_reseaux_ajouter_ne_touche_pas_aux_lignes_renseignees():
     lignes = reseaux_sns(NETWORK)
     existant = (
-        "reseau;site;zone;vlan;interface\n"
-        "203.0.113.0/24;siege;;;WAN-PRINCIPAL   # renommé à la main\n"
-        "10.0.0.0/24;gras;lan;10\n"
+        "reseau;site;vlan;interface\n"
+        "203.0.113.0/24;siege;;WAN-PRINCIPAL   # renommé à la main\n"
+        "10.0.0.0/24;gras;10\n"
     )
-    completion = completer_reseaux(existant, lignes, "siege", "Network", contextes, "stormshield")
+    completion = completer_reseaux(existant, lignes, "siege", "Network", "stormshield")
     assert completion.migrees == ()
     assert completion.differentes == (
-        "203.0.113.0/24 : fichier siege;;;WAN-PRINCIPAL, interface out (ethernet0) siege;;;out",
-        "10.0.0.0/24 : fichier gras;lan;10;, interface LAN (vlan0) siege;;10;LAN",
+        "203.0.113.0/24 : fichier siege;;WAN-PRINCIPAL, interface out (ethernet0) siege;;out",
+        "10.0.0.0/24 : fichier gras;10;, interface LAN (vlan0) siege;10;LAN",
     )
     assert completion.texte.startswith(existant)
-    assert "198.51.100.0/24;siege;;;out" in completion.texte
+    assert "198.51.100.0/24;siege;;out" in completion.texte
 
 
-def test_reseaux_ajouter_entete_sans_vlan(contextes):
+def test_reseaux_ajouter_entete_sans_vlan():
     lignes = reseaux_sns(NETWORK)
     existant = "reseau;site;zone\n10.210.0.0/24;gras;lan\n"
-    completion = completer_reseaux(existant, lignes, "siege", "Network", contextes, "stormshield")
-    assert completion.texte.startswith("reseau;site;zone;vlan;interface\n10.210.0.0/24;gras;lan\n")
-    assert "10.0.0.0/24;siege;;10;LAN  # LAN (vlan0)" in completion.texte
-    analyser_reseaux(completion.texte, contextes)
+    completion = completer_reseaux(existant, lignes, "siege", "Network", "stormshield")
+    assert completion.texte.startswith("reseau;site;vlan;interface\n10.210.0.0/24;gras\n")
+    assert "10.0.0.0/24;siege;10;LAN  # LAN (vlan0)" in completion.texte
+    analyser_reseaux(completion.texte)
 
 
-def test_reseaux_ajouter_vlan_absent_de_l_interface(contextes):
+def test_reseaux_ajouter_vlan_absent_de_l_interface():
     lignes = reseaux_sns(NETWORK)
-    existant = "reseau;site;zone;vlan;interface\n10.0.0.0/24;siege;;10;LAN\n"
+    existant = "reseau;site;vlan;interface\n10.0.0.0/24;siege;10;LAN\n"
     sans_tag = [replace(lignes[-1], vlan=None)]
-    assert completer_reseaux(existant, sans_tag, "siege", "Network", contextes).presentes
+    assert completer_reseaux(existant, sans_tag, "siege", "Network").presentes
     autre_tag = [replace(lignes[-1], vlan=11)]
-    assert completer_reseaux(existant, autre_tag, "siege", "Network", contextes).differentes
+    assert completer_reseaux(existant, autre_tag, "siege", "Network").differentes
 
 
 def test_objets_globaux_lus(racine):
@@ -454,8 +450,8 @@ def test_objets_globaux_lus(racine):
     assert "global_SRV_PROXY" in inventaire.non_definis
 
 
-def test_plan_objets_globaux(racine, contextes, referentiel):
-    resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), contextes, referentiel)
+def test_plan_objets_globaux(racine, referentiel):
+    resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), referentiel)
     actions = {item.ancien: (item.action, item.nouveau) for item in resultat.globaux}
     assert actions["global_SRV_WEB"] == ("reutiliser", "SIEGE_HST_DMZ_SRV-WEB")
     assert actions["global_LAN_USERS"] == ("reutiliser", "SIEGE_NET_V10_LAN-USERS")
@@ -484,11 +480,11 @@ def test_plan_objets_globaux(racine, contextes, referentiel):
     ).items()
 
 
-def test_globaux_non_cites_a_revoir_si_retraits_suspendus(racine, tmp_path, contextes, referentiel):
+def test_globaux_non_cites_a_revoir_si_retraits_suspendus(racine, tmp_path, referentiel):
     dossier = tmp_path / "sns"
     shutil.copytree(racine / "examples" / "stormshield-natif", dossier)
     (dossier / "objectgroup").unlink()
-    resultat = auditer(charger([dossier]), contextes, referentiel)
+    resultat = auditer(charger([dossier]), referentiel)
     retire = next(item for item in resultat.globaux if item.ancien == "global_SRV_RETIRE")
     assert retire.action == "revoir"
     assert "retraits suspendus" in retire.commentaire

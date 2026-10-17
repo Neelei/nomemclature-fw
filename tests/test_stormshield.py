@@ -5,9 +5,9 @@ from fwclean.sites import Localisateur, Localisation
 from fwclean.stormshield import assembler, lire_objets
 
 
-def test_exemple_stormshield(racine, contextes, referentiel):
+def test_exemple_stormshield(racine, referentiel):
     inventaire = charger([racine / "examples" / "stormshield"])
-    resultat = auditer(inventaire, contextes, referentiel)
+    resultat = auditer(inventaire, referentiel)
 
     assert inventaire.constructeur == "stormshield"
     assert len(inventaire.regles) == 7
@@ -48,7 +48,7 @@ def test_exemple_stormshield(racine, contextes, referentiel):
     assert "nat-sortant" not in {regle.nom for regle in inventaire.regles}
 
 
-def test_plage_de_ports_et_protocole(contextes):
+def test_plage_de_ports_et_protocole():
     texte = """
 service,SVC_TCP_2000-2032_HAUTE,tcp,,2000,2032,""
 protocol,ospf,89,"OSPF"
@@ -60,16 +60,16 @@ protocol,ospf,89,"OSPF"
     assert par_nom["ospf"].detail == "ip/89"
     signature = signature_service(par_nom["SVC_TCP_2000-2032_HAUTE"].empreinte)
     assert signature == ("TCP", "2000-2032")
-    assert est_conforme_objet("SVC_TCP_2000-2032_HAUTE", "service", contextes, signature=signature)
+    assert est_conforme_objet("SVC_TCP_2000-2032_HAUTE", "service", signature=signature)
 
 
-def test_hote_double_pile(contextes, referentiel):
+def test_hote_double_pile(referentiel):
     texte = """
 host,srv_double,10.1.1.30,2001:db8::30,,,""
 host,srv_v6,,2001:db8::31,,,""
 """
     objets, _ignores = lire_objets(texte)
     inventaire = assembler(("memoire",), objets, (), (), ())
-    loc = Localisateur(inventaire, contextes, referentiel)
+    loc = Localisateur(inventaire, referentiel)
     assert loc.objet(objets[0]) == Localisation("siege", "dmz")
     assert loc.objet(objets[1]) == Localisation("ctx", "ctx")

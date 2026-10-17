@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,16 +17,20 @@ from fwclean.naming import (
     Localisation,
     normaliser_chaine,
     normaliser_interface,
-    zone_connue,
 )
 
 Adresse = ipaddress.IPv4Address | ipaddress.IPv6Address
 Reseau = ipaddress.IPv4Network | ipaddress.IPv6Network
 
-ENTETE = ("reseau", "site", "zone")
-ENTETE_VLAN = (*ENTETE, "vlan")
-ENTETE_INTERFACE = (*ENTETE_VLAN, "interface")
-ENTETES = (ENTETE, ENTETE_VLAN, ENTETE_INTERFACE)
+# En-tête écrit par fwclean. Les anciens en-têtes avec colonne zone restent lus : la zone y est
+# ignorée (elle n'entre dans aucun nom et n'est plus vérifiée).
+ENTETE_INTERFACE = ("reseau", "site", "vlan", "interface")
+ENTETES = (
+    ENTETE_INTERFACE,
+    ("reseau", "site", "zone", "vlan", "interface"),
+    ("reseau", "site", "zone", "vlan"),
+    ("reseau", "site", "zone"),
+)
 
 INCONNUE = Localisation(CTX, CTX)
 
@@ -35,7 +39,6 @@ INCONNUE = Localisation(CTX, CTX)
 class Entree:
     reseau: Reseau
     site: str
-    zone: str | None
     vlan: int | None = None
     # Nom tel qu'écrit dans reseaux.csv (VLAN-16, LABO_ANA…) ; None : colonne absente ou vide.
     interface: str | None = None
@@ -93,27 +96,27 @@ class Referentiel:
         manquantes = len(self.sans_interface)
         if manquantes:
             texte += (
-                f" ; {manquantes} sans interface (colonne vide ou ancien format à 4 colonnes) : "
+                f" ; {manquantes} sans interface (colonne vide ou absente) : "
                 "objets de ces réseaux à revoir"
             )
         return texte
 
 
-def lire_reseaux(chemin: Path, contextes: Sequence[str]) -> Referentiel:
+def lire_reseaux(chemin: Path) -> Referentiel:
     try:
         texte = chemin.read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise ErreurLecture(f"Référentiel réseaux illisible : {chemin} ({exc.strerror})") from exc
-    return analyser_reseaux(texte, contextes, source=str(chemin))
+    return analyser_reseaux(texte, source=str(chemin))
 
 
-def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = None) -> Referentiel:
-    """Lit `reseau;site;zone;vlan;interface` ; `#` : commentaire.
+def analyser_reseaux(texte: str, source: str | None = None) -> Referentiel:
+    """Lit `reseau;site;vlan;interface` ; `#` : commentaire.
 
-    Zone, VLAN et interface peuvent être vides. Les anciens formats `reseau;site;zone` et
-    `reseau;site;zone;vlan`, et les lignes plus courtes que l'en-tête, restent lus : l'interface
-    y manque, les objets de ces réseaux sont donc à revoir, et une zone absente de
-    contextes.txt y est ignorée (elle ne sert plus qu'au nom des réseaux).
+    VLAN et interface peuvent être vides. Les anciens en-têtes `reseau;site;zone;vlan;interface`,
+    `reseau;site;zone;vlan` et `reseau;site;zone` restent lus, colonne zone ignorée. Une ligne
+    plus courte que l'en-tête est complétée par des champs vides : sans interface, les objets
+    de ce réseau sont à revoir.
     """
     entrees: dict[Reseau, Entree] = {}
     entete: tuple[str, ...] | None = None
@@ -126,21 +129,20 @@ def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = 
         if entete is None:
             if en_tete not in ENTETES:
                 raise ErreurLecture(
-                    "reseaux.csv : en-tête attendu « reseau;site;zone;vlan;interface » "
-                    f"(ou « reseau;site;zone;vlan », « reseau;site;zone »), lu « {ligne} »."
+                    "reseaux.csv : en-tête attendu « reseau;site;vlan;interface » "
+                    f"(ou un ancien en-tête avec colonne zone), lu « {ligne} »."
                 )
             entete = en_tete
             continue
         if en_tete in ENTETES:
             continue
-        if not len(ENTETE) <= len(champs) <= len(entete):
+        if not 2 <= len(champs) <= len(entete):
             raise ErreurLecture(
                 f"reseaux.csv ligne {numero} : {len(entete)} champs attendus ({';'.join(entete)})."
             )
-        ancien_format = len(champs) < len(ENTETE_INTERFACE)
-        champs += [""] * (len(ENTETE_INTERFACE) - len(champs))
-        brut_reseau, site, zone, brut_vlan, interface = champs
-        site, zone = site.lower(), zone.lower()
+        valeurs = dict(zip(entete, champs + [""] * (len(entete) - len(champs)), strict=True))
+        brut_reseau, site = valeurs["reseau"], valeurs["site"].lower()
+        brut_vlan, interface = valeurs.get("vlan", ""), valeurs.get("interface", "")
         if brut_vlan and not (brut_vlan.isdigit() and 1 <= int(brut_vlan) <= 4094):
             raise ErreurLecture(f"reseaux.csv ligne {numero} : VLAN invalide « {brut_vlan} » (1 à 4094).")
         vlan = int(brut_vlan) if brut_vlan else None
@@ -149,20 +151,14 @@ def analyser_reseaux(texte: str, contextes: Sequence[str], source: str | None = 
         except ValueError as exc:
             raise ErreurLecture(f"reseaux.csv ligne {numero} : réseau invalide « {brut_reseau} ».") from exc
         if not re.fullmatch(r"[a-z0-9]+", site) or site in RESERVES:
-            raise ErreurLecture(f"reseaux.csv ligne {numero} : site invalide « {champs[1]} ».")
-        if zone and (not zone_connue(zone, contextes) or zone in RESERVES):
-            if not ancien_format:
-                raise ErreurLecture(
-                    f"reseaux.csv ligne {numero} : zone « {champs[2]} » absente de contextes.txt."
-                )
-            zone = ""
+            raise ErreurLecture(f"reseaux.csv ligne {numero} : site invalide « {valeurs['site']} ».")
         if interface and normaliser_interface(interface) in {"", *RESERVES}:
             raise ErreurLecture(f"reseaux.csv ligne {numero} : interface invalide « {interface} ».")
-        entree = Entree(reseau=reseau, site=site, zone=zone or None, vlan=vlan, interface=interface or None)
+        entree = Entree(reseau=reseau, site=site, vlan=vlan, interface=interface or None)
         existante = entrees.get(reseau)
         if existante is not None and existante != entree:
             raise ErreurLecture(
-                f"reseaux.csv ligne {numero} : {reseau} déjà déclaré avec un autre site, zone, VLAN "
+                f"reseaux.csv ligne {numero} : {reseau} déjà déclaré avec un autre site, VLAN "
                 "ou interface."
             )
         entrees[reseau] = entree
@@ -205,16 +201,13 @@ def depuis_nom(nom: str, sites: Collection[str], interfaces: Collection[str]) ->
 class Localisateur:
     """Site + interface de chaque objet d'un inventaire, calculés une fois.
 
-    Les réseaux reçoivent en plus la zone (jamais côté Stormshield), le VLAN et `exact`
-    de l'entrée de reseaux.csv qui les contient.
+    Les réseaux reçoivent en plus le VLAN et `exact` de l'entrée de reseaux.csv qui les contient.
     """
 
-    def __init__(self, inventaire: Inventaire, contextes: Sequence[str], referentiel: Referentiel):
-        self.contextes = contextes
+    def __init__(self, inventaire: Inventaire, referentiel: Referentiel):
         self.referentiel = referentiel
         self.sites = frozenset(referentiel.sites)
         self.interfaces = frozenset(referentiel.interfaces)
-        self.avec_zone = inventaire.constructeur != "stormshield"
         self._adresses = {
             objet.nom: objet for objet in inventaire.objets if ESPACE[objet.sorte] == "adresse"
         }
@@ -270,7 +263,6 @@ class Localisateur:
         return Localisation(
             entree.site,
             entree.cle_interface or CTX,
-            zone=entree.zone if self.avec_zone else None,
             vlan=entree.vlan,
             exact=all(reseau == entree.reseau for reseau in reseaux),
         )

@@ -11,7 +11,6 @@ from fwclean import __version__
 from fwclean.audit import auditer
 from fwclean.charger import charger
 from fwclean.model import ErreurLecture
-from fwclean.naming import lire_contextes, lire_correspondances
 from fwclean.report import ecrire
 from fwclean.reseaux import (
     Completion,
@@ -25,9 +24,6 @@ from fwclean.script import generer_script
 from fwclean.script_sns import generer_script_sns
 from fwclean.sites import Referentiel, lire_reseaux
 from fwclean.stormshield_natif import genre_natif
-
-_CONTEXTES_DEFAUT = ("dmz", "lan", "wan", "vpn")
-
 
 def main(argv: list[str] | None = None) -> None:
     raise SystemExit(executer(argv))
@@ -81,14 +77,10 @@ def executer(argv: list[str] | None = None) -> int:
         help="Dossier du rapport et du plan (défaut : out)",
     )
     audit.add_argument(
-        "--contextes",
-        help="Fichier des zones autorisées, une par ligne (défaut : ./contextes.txt)",
-    )
-    audit.add_argument(
         "--reseaux",
         help=(
-            "Référentiel reseau;site;zone;vlan;interface qui donne le site et l'interface des "
-            "objets, et la zone et le VLAN des réseaux (défaut : ./reseaux.csv s'il existe, "
+            "Référentiel reseau;site;vlan;interface qui donne le site et l'interface des "
+            "objets, et le VLAN des réseaux (défaut : ./reseaux.csv s'il existe, "
             "sinon objets à adresse IP à revoir)"
         ),
     )
@@ -96,11 +88,9 @@ def executer(argv: list[str] | None = None) -> int:
         "reseaux",
         help="Écrire reseaux.csv depuis les interfaces d'une sauvegarde FortiGate ou d'un SNS",
         description=(
-            "FortiGate : lit config system interface, config system zone et les zones SD-WAN, "
-            "et écrit un réseau par interface qui porte une IP. SNS : lit le fichier Network "
-            "(interfaces à adresse statique). Colonnes reseau;site;zone;vlan;interface : la zone "
-            "FortiGate est traduite par contextes.txt (« mgmt = MGMT NETWORKS »), vide hors zone "
-            "et toujours vide pour SNS ; vlan = vlanid ou Tag ; interface = alias FortiGate "
+            "FortiGate : lit config system interface et écrit un réseau par interface qui porte "
+            "une IP. SNS : lit le fichier Network (interfaces à adresse statique). Colonnes "
+            "reseau;site;vlan;interface : vlan = vlanid ou Tag ; interface = alias FortiGate "
             "(set alias), à défaut nom de l'interface, et Name côté SNS ; à remplacer à la main "
             "s'il ne dit rien (port3, VLAN-131…)."
         ),
@@ -118,13 +108,13 @@ def executer(argv: list[str] | None = None) -> int:
         "--ajouter",
         action="store_true",
         help=(
-            "Compléter le fichier existant : ajoute les réseaux absents, remplit zone, VLAN et "
-            "interface des lignes du même site qui n'ont pas d'interface (ancien format à 4 "
-            "colonnes), remplace par l'alias un nom technique FortiGate encore en place, garde les autres lignes et commentaires, signale sans les modifier les "
-            "réseaux déjà présents avec un autre site, zone, VLAN ou interface"
+            "Compléter le fichier existant : ajoute les réseaux absents, remplit VLAN et "
+            "interface des lignes du même site qui n'ont pas d'interface, remplace par l'alias "
+            "un nom technique FortiGate encore en place, retire l'ancienne colonne zone, garde "
+            "les autres lignes et commentaires, signale sans les modifier les réseaux déjà "
+            "présents avec un autre site, VLAN ou interface"
         ),
     )
-    reseaux.add_argument("--contextes", help="Fichier des zones (défaut : ./contextes.txt)")
 
     script = sous.add_parser(
         "script",
@@ -177,10 +167,9 @@ def executer(argv: list[str] | None = None) -> int:
 
 def _auditer(args: argparse.Namespace) -> int:
     try:
-        contextes = _resoudre_contextes(args.contextes)
-        referentiel = _resoudre_reseaux(args.reseaux, contextes)
+        referentiel = _resoudre_reseaux(args.reseaux)
         inventaire = charger([Path(chemin) for chemin in args.chemins])
-        resultat = auditer(inventaire, contextes, referentiel)
+        resultat = auditer(inventaire, referentiel)
         rapport, plan = ecrire(resultat, Path(args.sortie))
     except ErreurLecture as exc:
         print(str(exc), file=sys.stderr)
@@ -209,32 +198,17 @@ def _auditer(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resoudre_contextes(chemin: str | None) -> tuple[str, ...]:
+def _resoudre_reseaux(chemin: str | None) -> Referentiel:
     if chemin:
-        return lire_contextes(Path(chemin))
-    local = Path.cwd() / "contextes.txt"
-    if local.is_file():
-        return lire_contextes(local)
-    return _CONTEXTES_DEFAUT
-
-
-def _resoudre_reseaux(chemin: str | None, contextes: tuple[str, ...]) -> Referentiel:
-    if chemin:
-        return lire_reseaux(Path(chemin), contextes)
+        return lire_reseaux(Path(chemin))
     local = Path.cwd() / "reseaux.csv"
     if local.is_file():
-        return lire_reseaux(local, contextes)
+        return lire_reseaux(local)
     return Referentiel()
 
 
 def _reseaux(args: argparse.Namespace) -> int:
     try:
-        chemin_contextes = Path(args.contextes) if args.contextes else Path.cwd() / "contextes.txt"
-        if chemin_contextes.is_file():
-            contextes = lire_contextes(chemin_contextes)
-            correspondances = lire_correspondances(chemin_contextes)
-        else:
-            contextes, correspondances = _CONTEXTES_DEFAUT, {}
         sortie = Path(args.sortie)
         completer = args.ajouter and sortie.exists()
         if sortie.exists() and not (args.ecraser or completer):
@@ -249,13 +223,13 @@ def _reseaux(args: argparse.Namespace) -> int:
             lignes = reseaux_sns(contenu)
         else:
             constructeur = "fortigate"
-            lignes = reseaux_connectes(contenu, contextes, correspondances)
+            lignes = reseaux_connectes(contenu)
         if completer:
             completion = completer_reseaux(
-                sortie.read_text(encoding="utf-8-sig"), lignes, args.site, source.name, contextes, constructeur
+                sortie.read_text(encoding="utf-8-sig"), lignes, args.site, source.name, constructeur
             )
         else:
-            texte = ecrire_reseaux(lignes, args.site, source.name, contextes, constructeur)
+            texte = ecrire_reseaux(lignes, args.site, source.name, constructeur)
     except (ErreurLecture, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -263,12 +237,9 @@ def _reseaux(args: argparse.Namespace) -> int:
         code = _afficher_completion(sortie, completion)
     else:
         sortie.write_text(texte, encoding="utf-8")
-        sans_zone = [ligne for ligne in lignes if ligne.zone_non_traduite]
         print(f"Référentiel : {sortie}")
-        print(f"Réseaux connectés : {len(lignes)}, zone FortiGate non traduite : {len(sans_zone)}.")
-        for ligne in sans_zone:
-            print(f"  à compléter : {ligne.reseau} ({ligne.zone_fortigate})")
-        desactivees = [ligne for ligne in lignes if ligne.desactivee and not ligne.zone_non_traduite]
+        print(f"Réseaux connectés : {len(lignes)}.")
+        desactivees = [ligne for ligne in lignes if ligne.desactivee]
         if desactivees:
             print(f"Interfaces désactivées, laissées en commentaire : {len(desactivees)}.")
         code = 0

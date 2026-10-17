@@ -132,12 +132,12 @@ def _export_slot_05(tmp_path):
     return dossier
 
 
-def test_lot_globaux(tmp_path, contextes, referentiel):
+def test_lot_globaux(tmp_path, referentiel):
     from fwclean.audit import auditer
     from fwclean.report import plan_dict
 
     inventaire = charger([_export_slot_05(tmp_path)])
-    plan = plan_dict(auditer(inventaire, contextes, referentiel))
+    plan = plan_dict(auditer(inventaire, referentiel))
     script = generer_script_sns(inventaire, plan)
     lot = script.globaux
     assert "CONFIG OBJECT HOST NEW name=SIEGE_HST_SERVEURS_SRV-APPLI ip=10.1.2.20 resolve=static" in lot
@@ -167,12 +167,12 @@ def test_lot_globaux(tmp_path, contextes, referentiel):
     assert ns["main"](["--dry-run"]) == 0
 
 
-def test_lot_globaux_objet_local_existant(tmp_path, contextes, referentiel):
+def test_lot_globaux_objet_local_existant(tmp_path, referentiel):
     from fwclean.audit import auditer
     from fwclean.report import plan_dict
 
     inventaire = charger([_export_slot_05(tmp_path)])
-    plan = plan_dict(auditer(inventaire, contextes, referentiel))
+    plan = plan_dict(auditer(inventaire, referentiel))
     for item in plan["globaux"]:
         if item["ancien"] == "global_SRV_APPLI":
             item["nouveau"] = "SIEGE_HST_DMZ_SRV-WEB"
@@ -191,8 +191,6 @@ def test_cli_sns_ecrit_lot_globaux(tmp_path, racine):
             str(dossier),
             "--sortie",
             str(sortie),
-            "--contextes",
-            str(racine / "contextes.txt"),
             "--reseaux",
             str(racine / "reseaux.exemple.csv"),
         ]

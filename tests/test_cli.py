@@ -28,8 +28,6 @@ def test_audit_cli_ecrit_le_plan(racine, tmp_path, capsys):
             str(source),
             "--sortie",
             str(sortie),
-            "--contextes",
-            str(racine / "contextes.txt"),
             "--reseaux",
             str(racine / "reseaux.exemple.csv"),
         ]

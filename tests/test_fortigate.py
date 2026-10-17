@@ -3,9 +3,9 @@ from fwclean.charger import charger
 from fwclean.fortigate import lire_fortigate
 
 
-def test_exemple_fortigate(racine, contextes, referentiel):
+def test_exemple_fortigate(racine, referentiel):
     inventaire = charger([racine / "examples" / "fortigate" / "nomenclature.conf"])
-    resultat = auditer(inventaire, contextes, referentiel)
+    resultat = auditer(inventaire, referentiel)
 
     assert inventaire.constructeur == "fortigate"
     assert len(inventaire.regles) == 7
@@ -56,7 +56,7 @@ def test_exemple_fortigate(racine, contextes, referentiel):
     assert "srv-oublie" not in {item.ancien for item in resultat.renommages}
 
 
-def test_doublon_quelle_que_soit_l_ordre_des_membres(contextes, referentiel):
+def test_doublon_quelle_que_soit_l_ordre_des_membres(referentiel):
     texte = """
 config firewall addrgrp
     edit "SIEGE_GRP_DMZ_WEB"
@@ -67,7 +67,7 @@ config firewall addrgrp
     next
 end
 """
-    resultat = auditer(lire_fortigate(texte, "memoire"), contextes, referentiel)
+    resultat = auditer(lire_fortigate(texte, "memoire"), referentiel)
     assert len(resultat.fusions) == 1
     fusion = resultat.fusions[0]
     assert fusion.conserve == "SIEGE_GRP_DMZ_WEB"
@@ -76,7 +76,7 @@ end
     assert resultat.renommages == ()
 
 
-def test_masques_equivalents_et_types_ignores(contextes, referentiel):
+def test_masques_equivalents_et_types_ignores(referentiel):
     texte = """
 config firewall address
     edit "SIEGE_HST_DMZ_WEB-01"
@@ -98,7 +98,7 @@ config firewall schedule onetime
 end
 """
     inventaire = lire_fortigate(texte, "memoire")
-    resultat = auditer(inventaire, contextes, referentiel)
+    resultat = auditer(inventaire, referentiel)
     assert any("France" in ignore for ignore in inventaire.ignores)
     assert "France" not in {item.nom for item in resultat.retraits}
     assert resultat.fusions[0].conserve == "SIEGE_HST_DMZ_WEB-01"
@@ -107,7 +107,7 @@ end
     assert "SCH_MAINTENANCE" in {item.nom for item in resultat.retraits}
 
 
-def test_objets_systeme_et_protocoles_reels(contextes, referentiel):
+def test_objets_systeme_et_protocoles_reels(referentiel):
     """Cas rencontrés sur un export FortiGate 7.4 réel (all sans subnet, ICMP6, ALL)."""
     texte = """
 config firewall address
@@ -160,11 +160,11 @@ end
     assert ping6.detail == "icmp6/128"
     webproxy = next(objet for objet in inventaire.objets if objet.nom == "webproxy")
     assert "tcp/0-65535" in webproxy.detail
-    resultat = auditer(inventaire, contextes, referentiel)
+    resultat = auditer(inventaire, referentiel)
     assert "SIEGE_HST_DMZ_WEB-01" not in {item.nom for item in resultat.retraits}
 
 
-def test_reseaux_par_interface(contextes, referentiel):
+def test_reseaux_par_interface(referentiel):
     texte = """
 config system interface
     edit "VLAN-11"
@@ -213,7 +213,7 @@ end
         "IDRAC address": 131,
         "dmz-sans-vlan": None,
     }
-    resultat = auditer(inventaire, contextes, referentiel)
+    resultat = auditer(inventaire, referentiel)
     noms = {item.ancien: item.nouveau for item in resultat.renommages}
     # Sous-réseaux de 10.1.0.0/16 (SERVEURS) : ancien nom en détail, VLAN de reseaux.csv seul.
     assert noms["SRV-ESX [vlan11]"] == "SIEGE_NET_SERVEURS-SRV-ESX"
