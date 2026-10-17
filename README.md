@@ -29,7 +29,7 @@ mkdir -p inbox
 ```
 
 - FortiGate : la sauvegarde texte `.conf`.
-- Stormshield : de préférence les fichiers natifs de `/usr/Firewall/ConfigFiles` (`object`, `objectgroup`, `servicegroup`, `router`, `Network`, `route`, `Filter`, `global`) dans `inbox/stormshield/`. La commande SSH qui les rassemble est dans [la méthode](docs/methode-nettoyage.md#stormshield-fichiers-natifs). Sinon, le CSV des objets et le CSV des règles de filtrage (et `routes.csv` si des objets ne sont cités que par le routage). Une sauvegarde `.na` est chiffrée, elle est refusée.
+- Stormshield : de préférence les fichiers natifs de `/usr/Firewall/ConfigFiles` (`object`, `objectgroup`, `servicegroup`, `router`, `Network`, `route`, `Filter`, `Global`) dans `inbox/stormshield/`. La commande SSH qui les rassemble est dans [la méthode](docs/methode-nettoyage.md#stormshield-fichiers-natifs). Sinon, le CSV des objets et le CSV des règles de filtrage (et `routes.csv` si des objets ne sont cités que par le routage). Une sauvegarde `.na` est chiffrée, elle est refusée.
 
 ## Lancer l'audit
 
@@ -72,9 +72,9 @@ uv run fwclean audit examples/stormshield --reseaux reseaux.exemple.csv --sortie
 uv run fwclean audit examples/stormshield-natif --reseaux reseaux.exemple.csv --sortie out/stormshield-natif
 ```
 
-Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `SIEGE_HST_LAN-USERS_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `GRAS_NET_V210_GRAS-210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `MULTI_GRP_MULTI_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. Dans l'exemple SNS natif, la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC, groupe absent).
+Ces exemples contiennent chacun un nom à reprendre, un doublon strict et un objet sans référence. `SIEGE_HST_LAN-USERS_LEGACY` n'est cité que par une règle désactivée : il n'est pas orphelin. `Vlan210` devient `GRAS_NET_V210_GRAS-210` par son réseau, et le groupe `Clients web`, qui mélange SIEGE et GRAS, devient `MULTI_GRP_MULTI_CLIENTS-WEB`. Dans l'exemple FortiGate, `partenaire` (hors référentiel) est listé à revoir sans nom proposé, et le service `Appli metier 8443` devient `SVC_TCP_8443_APPLI-METIER`. Dans l'exemple SNS natif, la section Avertissements liste les noms cités mais non définis (routeur, objet global SMC absent de `Global/`, groupe absent), et la section « Objets globaux SMC » montre chaque action sur les globaux de `Global/` : réutiliser, créer, revoir, supprimer.
 
-Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup` et `servicegroup` sont lus : sans eux, un membre de groupe paraîtrait orphelin. Les objets globaux SMC et les objets routeur ne sont pas gérés : un hôte qui ne sert que de passerelle de routeur ou n'est cité que par des objets globaux peut apparaître à tort comme orphelin. Avant chaque suppression, lancer « Vérifier l'utilisation » sur l'objet dans le SNS. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés. Les objets natifs du SNS (base par défaut : `http`, `dns_udp`, `rfc5735_private_1`, `update1.stormshield.eu`…) ne sont ni renommés, ni supprimés, ni retirés, et ne comptent pas comme non conformes ; le rapport les liste à part (« Objets natifs SNS ignorés »). La liste est décrite dans [la méthode](docs/methode-nettoyage.md#objets-natifs-sns).
+Sur Stormshield, les retraits d'orphelins ne sont proposés que si `objectgroup` et `servicegroup` sont lus : sans eux, un membre de groupe paraîtrait orphelin. Les objets routeur ne sont pas gérés : un hôte qui ne sert que de passerelle de routeur peut apparaître à tort comme orphelin. Les objets globaux SMC (`Global/object`, `Global/objectgroup`, `Global/servicegroup`) sont lus pour être remplacés par des objets locaux puis supprimés (voir [la méthode](docs/methode-nettoyage.md#objets-globaux-smc)). Avant chaque suppression, lancer « Vérifier l'utilisation » sur l'objet dans le SNS. Les objets FQDN et les hôtes `resolve=dynamic` (le nom est le nom DNS) ne sont jamais renommés. Les objets natifs du SNS (base par défaut : `http`, `dns_udp`, `rfc5735_private_1`, `update1.stormshield.eu`…) ne sont ni renommés, ni supprimés, ni retirés, et ne comptent pas comme non conformes ; le rapport les liste à part (« Objets natifs SNS ignorés »). La liste est décrite dans [la méthode](docs/methode-nettoyage.md#objets-natifs-sns).
 
 ## Tests
 
@@ -135,7 +135,7 @@ uv run fwclean script inbox/pare-feu.conf --plan out/plan.json
 uv run fwclean script inbox/stormshield --plan out/stormshield/plan.json --sortie out/stormshield
 ```
 
-Écrit `01-renommages.py`, `02-fusions.py`, `03-retraits.py` (python-SNS-API) et `ignores.txt`. Chaque script accepte `--host`, `--user`, `--password`, `--dry-run`. Ordre : 01 → 02 → 03. Ne pas redéployer depuis SMC après exécution (écraserait les changements locaux). Valider d'abord en `--dry-run` au lab (positions de règles, champ `dstport`).
+Écrit `01-renommages.py`, `02-fusions.py`, `03-retraits.py` (python-SNS-API) et `ignores.txt`, plus `04-globaux.py` si l'export contient des objets globaux SMC (création des objets locaux de remplacement, réécriture des règles, suppression `global=1` des globaux). Chaque script accepte `--host`, `--user`, `--password`, `--dry-run`. Ordre : 01 → 02 → 03 → 04. Procédure de décommissionnement de la SMC : [la méthode](docs/methode-nettoyage.md#objets-globaux-smc). Ne pas redéployer depuis SMC après exécution (écraserait les changements locaux). Valider d'abord en `--dry-run` au lab (positions de règles, champ `dstport`).
 
 ## Premier passage sur un export réel
 

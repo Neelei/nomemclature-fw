@@ -131,8 +131,9 @@ def executer(argv: list[str] | None = None) -> int:
         help="Écrire les scripts d'application d'un plan relu (FortiGate CLI ou SNS Python)",
         description=(
             "Relit la sauvegarde et le plan. FortiGate : 01-renommages.txt, 02-fusions.txt, "
-            "03-retraits.txt. Stormshield : 01-renommages.py, 02-fusions.py, 03-retraits.py "
-            "(python-SNS-API, --dry-run). Rien n'est envoyé à l'équipement."
+            "03-retraits.txt. Stormshield : 01-renommages.py, 02-fusions.py, 03-retraits.py, "
+            "et 04-globaux.py si des objets globaux SMC sont lus (python-SNS-API, --dry-run). "
+            "Rien n'est envoyé à l'équipement."
         ),
     )
     script.add_argument(
