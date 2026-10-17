@@ -388,7 +388,14 @@ def _hote(nom: str, valeur: str) -> tuple[Objet | None, str | None]:
     if options.get("resolve", "").strip().lower() == "dynamic":
         cle = fqdn_cle(nom)
         return (
-            Objet(sorte="fqdn", nom=nom, empreinte=("fqdn", cle), detail=cle, fige=FIGE_DYNAMIQUE),
+            Objet(
+                sorte="fqdn",
+                nom=nom,
+                empreinte=("fqdn", cle),
+                detail=cle,
+                fige=FIGE_DYNAMIQUE,
+                adresses=tuple(canon_ip(ip) for ip in ips),
+            ),
             None,
         )
     elements = tuple(
@@ -411,9 +418,17 @@ def _reseau(nom: str, valeur: str) -> tuple[Objet, None]:
     )
 
 
-def _fqdn(nom: str, _valeur: str) -> tuple[Objet, None]:
+def _fqdn(nom: str, valeur: str) -> tuple[Objet, None]:
     cle = fqdn_cle(nom)
-    return Objet(sorte="fqdn", nom=nom, empreinte=("fqdn", cle), detail=cle, fige=_FIGE_FQDN), None
+    adresses = tuple(
+        canon_ip(partie.strip())
+        for partie in valeur.split(",")
+        if "=" not in partie and _est_ip(partie.strip())
+    )
+    return (
+        Objet(sorte="fqdn", nom=nom, empreinte=("fqdn", cle), detail=cle, fige=_FIGE_FQDN, adresses=adresses),
+        None,
+    )
 
 
 def _service(nom: str, valeur: str) -> tuple[Objet, None]:

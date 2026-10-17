@@ -14,10 +14,6 @@ from fwclean.sns_natifs import est_natif
 from fwclean.stormshield_natif import FIGE_DYNAMIQUE, PREFIXE_GLOBAL
 
 ACTIVATE = ("CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE")
-# `global=1` n'est pas documenté sur CONFIG OBJECT … DELETE (guide CLI serverd) : s'il est
-# ignoré, la commande vise l'objet local de même nom. Lot 05 à part, homonymes locaux exclus,
-# à valider sur un objet au SNS de test avant le reste.
-ACTIVATE_GLOBAUX = ACTIVATE + ("CONFIG OBJECT ACTIVATE global=1",)
 
 # sorte fwclean → type RENAME SNS / module DELETE.
 TYPES_RENAME = {
@@ -300,7 +296,7 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
                     f"suppression de {nom} : encore référencé après réécriture, à reprendre à la main"
                 )
                 continue
-            cmds_fusion.append((_commande_delete(sorte, nom), f"suppression doublon — {origine}"))
+            cmds_fusion.append((_commande_delete(_sorte_sns(etat, espace, nom, sorte), nom), f"suppression doublon — {origine}"))
             _oublier(etat, espace, nom)
             supprimes.add((espace, nom))
 
@@ -321,7 +317,7 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
         elif _encore_cite(etat, espace, nom) or (espace, nom) in etat.cites_route_nat:
             ignores.append(f"retrait de {nom} : encore référencé dans l'export")
         else:
-            cmds_retrait.append((_commande_delete(sorte, nom), f"retrait — {item.get('motif', 'orphelin')}"))
+            cmds_retrait.append((_commande_delete(_sorte_sns(etat, espace, nom, sorte), nom), f"retrait — {item.get('motif', 'orphelin')}"))
             _oublier(etat, espace, nom)
 
     cmds_globaux, cmds_suppr_globaux, compteurs_globaux = _globaux(
@@ -333,7 +329,7 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
         "02-fusions": _rendre_cli(cmds_fusion, lot),
         "03-retraits": _rendre_cli(cmds_retrait, lot),
         "04-globaux": _rendre_cli(cmds_globaux, lot),
-        "05-suppression-globaux": _rendre_cli(cmds_suppr_globaux, lot, ACTIVATE_GLOBAUX),
+        "05-suppression-globaux": _rendre_cli(cmds_suppr_globaux, lot),
     }
     return Script(
         cli=cli,
@@ -358,10 +354,9 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
             lot,
         ),
         suppression_globaux=_rendre_script(
-            "05 — Suppression des objets globaux SMC remplacés (global=1, à valider sur un objet d'abord)",
+            "05 — Suppression des objets globaux SMC remplacés (CONFIG GLOBAL OBJECT … DELETE)",
             cmds_suppr_globaux,
             lot,
-            ACTIVATE_GLOBAUX,
         ),
     )
 
@@ -443,18 +438,7 @@ def _globaux(
 
     suppressions: list[tuple[str, str]] = []
     supprimes = 0
-    candidats: set[tuple[str, str]] = set()
-    for espace, nom in sorted(set(a_supprimer)):
-        nu = nom.removeprefix(PREFIXE_GLOBAL)
-        homonyme = etat.objets.get((espace, nu))
-        if (homonyme is not None and not homonyme.globale) or est_natif(etat.objets[(espace, nom)].sorte, nu):
-            ignores.append(
-                f"suppression de {nom} : objet local ou natif homonyme {nu}, "
-                "à supprimer depuis SMC ou l'interface (global=1 non garanti)"
-            )
-            continue
-        candidats.add((espace, nom))
-    restants = sorted(candidats, key=lambda cle: (cle not in groupes_globaux, cle[0], cle[1]))
+    restants = sorted(set(a_supprimer), key=lambda cle: (cle not in groupes_globaux, cle[0], cle[1]))
     progres = True
     while restants and progres:
         progres = False
@@ -465,7 +449,7 @@ def _globaux(
             objet = etat.objets[cle]
             suppressions.append(
                 (
-                    f"{_commande_delete(objet.sorte, nom.removeprefix(PREFIXE_GLOBAL))} global=1",
+                    _commande_delete(_sorte_sns(etat, espace, nom, objet.sorte), nom.removeprefix(PREFIXE_GLOBAL), globale=True),
                     f"suppression objet global — {nom}",
                 )
             )
@@ -485,7 +469,7 @@ def _globaux(
 def _commandes_new(
     objet: Objet, nom: str, membres: list[str], ancien: str
 ) -> list[tuple[str, str]] | None:
-    """Commandes CONFIG OBJECT … NEW d'un objet local (syntaxe à valider en --dry-run)."""
+    """Commandes CONFIG OBJECT … NEW d'un objet local (guide CLI serverd v5)."""
     origine = f"création {nom} (remplace {ancien})"
     commentaire = f"comment={_q('remplace ' + ancien + ' (SMC)')}"
     nom_q = _q(nom)
@@ -498,10 +482,15 @@ def _commandes_new(
         adresses = (f" ip={v4[0]}" if v4 else "") + (f" ipv6={v6[0]}" if v6 else "")
         commande = f"CONFIG OBJECT HOST NEW name={nom_q}{adresses} resolve=static {commentaire}"
     elif sorte == "fqdn":
+        v4 = [ip for ip in objet.adresses if ipaddress.ip_address(ip).version == 4]
+        v6 = [ip for ip in objet.adresses if ipaddress.ip_address(ip).version == 6]
+        if not objet.adresses or len(v4) > 1 or len(v6) > 1:
+            return None
+        adresses = (f" ip={v4[0]}" if v4 else "") + (f" ipv6={v6[0]}" if v6 else "")
         if objet.fige == FIGE_DYNAMIQUE:
-            commande = f"CONFIG OBJECT HOST NEW name={nom_q} resolve=dynamic {commentaire}"
+            commande = f"CONFIG OBJECT HOST NEW name={nom_q}{adresses} resolve=dynamic {commentaire}"
         else:
-            commande = f"CONFIG OBJECT FQDN NEW name={nom_q} {commentaire}"
+            commande = f"CONFIG OBJECT FQDN NEW name={nom_q}{adresses} {commentaire}"
     elif sorte == "reseau":
         famille, adresse, prefixe = objet.empreinte[0]
         if famille != "v4" or len(objet.empreinte) > 1:
@@ -509,8 +498,9 @@ def _commandes_new(
         masque = ipaddress.ip_network(f"{adresse}/{prefixe}").netmask
         commande = f"CONFIG OBJECT NETWORK NEW name={nom_q} ip={adresse} mask={masque} {commentaire}"
     elif sorte == "plage":
-        _famille, debut, fin = objet.empreinte
-        commande = f"CONFIG OBJECT RANGE NEW name={nom_q} begin={debut} end={fin} {commentaire}"
+        famille, debut, fin = objet.empreinte
+        bornes = f"begin={debut} end={fin}" if famille == "v4" else f"beginv6={debut} endv6={fin}"
+        commande = f"CONFIG OBJECT HOST NEW name={nom_q} {bornes} {commentaire}"
     elif sorte == "service":
         protos = {proto for proto, _plages in objet.empreinte}
         plages = {plages for _proto, plages in objet.empreinte}
@@ -696,8 +686,15 @@ def _oublier(etat: _Etat, espace: str, nom: str) -> None:
     etat.groupes.pop((espace, nom), None)
 
 
-def _commande_delete(sorte: str, nom: str) -> str:
-    return f"CONFIG OBJECT {MODULES_DELETE[sorte]} DELETE name={_q(nom)}"
+def _sorte_sns(etat: _Etat, espace: str, nom: str, sorte: str) -> str:
+    """Un hôte resolve=dynamic est lu comme FQDN mais reste un HOST pour le SNS."""
+    objet = etat.objets.get((espace, nom))
+    return "hote" if objet is not None and objet.fige == FIGE_DYNAMIQUE else sorte
+
+
+def _commande_delete(sorte: str, nom: str, globale: bool = False) -> str:
+    espace = "CONFIG GLOBAL OBJECT" if globale else "CONFIG OBJECT"
+    return f"{espace} {MODULES_DELETE[sorte]} DELETE name={_q(nom)}"
 
 
 def _q(valeur: str) -> str:

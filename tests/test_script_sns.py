@@ -102,6 +102,60 @@ def test_plage_delete_host():
     assert _commande_delete("plage", "plage1") == "CONFIG OBJECT HOST DELETE name=plage1"
     assert _commande_delete("hote", "x") == "CONFIG OBJECT HOST DELETE name=x"
     assert _commande_delete("reseau", "x") == "CONFIG OBJECT NETWORK DELETE name=x"
+    assert _commande_delete("groupe-adresses", "g", globale=True) == "CONFIG GLOBAL OBJECT GROUP DELETE name=g"
+
+
+def test_commandes_new_conformes_au_guide_cli():
+    """Guide CLI serverd v5 : HOST NEW et FQDN NEW exigent une adresse ; pas de RANGE NEW."""
+    from fwclean.model import Objet
+    from fwclean.script_sns import _commandes_new
+    from fwclean.stormshield_natif import FIGE_DYNAMIQUE
+
+    def new(objet):
+        resultat = _commandes_new(objet, "local", [], "global_x")
+        return resultat and resultat[0][0]
+
+    dynamique = Objet(
+        sorte="fqdn", nom="pc.lan", empreinte=("fqdn", "pc.lan"), detail="pc.lan",
+        fige=FIGE_DYNAMIQUE, adresses=("10.210.0.57",),
+    )
+    assert new(dynamique) == (
+        'CONFIG OBJECT HOST NEW name=local ip=10.210.0.57 resolve=dynamic comment="remplace global_x (SMC)"'
+    )
+    fqdn = Objet(sorte="fqdn", nom="k.com", empreinte=("fqdn", "k.com"), detail="k.com", adresses=("fe80::1",))
+    assert new(fqdn) == 'CONFIG OBJECT FQDN NEW name=local ipv6=fe80::1 comment="remplace global_x (SMC)"'
+    sans_ip = Objet(sorte="fqdn", nom="k.com", empreinte=("fqdn", "k.com"), detail="k.com")
+    assert new(sans_ip) is None
+    plage = Objet(sorte="plage", nom="p", empreinte=("v4", "10.0.0.1", "10.0.0.9"), detail="")
+    assert new(plage) == (
+        'CONFIG OBJECT HOST NEW name=local begin=10.0.0.1 end=10.0.0.9 comment="remplace global_x (SMC)"'
+    )
+
+
+def test_lecture_garde_l_adresse_des_noms_dns(tmp_path):
+    from fwclean.stormshield_natif import _fqdn, _hote
+
+    dynamique, _ = _hote("pc.lan", "10.210.0.57,resolve=dynamic")
+    assert dynamique.sorte == "fqdn" and dynamique.adresses == ("10.210.0.57",)
+    fqdn, _ = _fqdn("Kelio", "84.239.81.6")
+    assert fqdn.adresses == ("84.239.81.6",)
+
+
+def test_hote_dynamique_supprime_comme_host(tmp_path):
+    from fwclean.model import Inventaire
+    from fwclean.stormshield_natif import _hote
+
+    dynamique, _ = _hote("pc.lan", "10.0.0.85,resolve=dynamic")
+    inventaire = Inventaire(constructeur="stormshield", sources=("test",), objets=(dynamique,))
+    plan = {
+        "constructeur": "stormshield",
+        "renommages": [],
+        "fusions": [],
+        "retraits": [{"sorte": "fqdn", "nom": "pc.lan", "motif": "orphelin"}],
+    }
+    script = generer_script_sns(inventaire, plan)
+    assert "CONFIG OBJECT HOST DELETE name=pc.lan" in script.retraits
+    assert "FQDN DELETE" not in script.retraits
 
 
 def test_cli_sns_ecrit_py(tmp_path):
@@ -153,16 +207,15 @@ def test_lot_globaux(tmp_path, referentiel):
     # Lot 04 : aucune suppression ; elles sont dans le lot 05, groupe englobant d'abord.
     assert "global=1" not in lot and "DELETE name=" not in lot
     suppr = script.suppression_globaux
-    assert suppr.index("DELETE name=GRP_IMBRIQUE global=1") < suppr.index("DELETE name=GRP_SERVEURS global=1")
-    assert "CONFIG OBJECT HOST DELETE name=SRV_RETIRE global=1" in suppr
-    assert "CONFIG OBJECT NETWORK DELETE name=LAN_USERS global=1" in suppr
+    assert suppr.index("GROUP DELETE name=GRP_IMBRIQUE\"") < suppr.index("GROUP DELETE name=GRP_SERVEURS\"")
+    assert "CONFIG GLOBAL OBJECT HOST DELETE name=SRV_RETIRE" in suppr
+    assert "CONFIG GLOBAL OBJECT NETWORK DELETE name=LAN_USERS" in suppr
     # Cité par une route, membre d'un groupe global à revoir, ou à revoir : pas supprimés.
     for nom in ("PASSERELLE_SECOURS", "SRV_APPLI", "NAS_INCONNU", "GRP_A_REVOIR"):
-        assert f"DELETE name={nom} global=1" not in suppr
+        assert f"DELETE name={nom}\"" not in suppr
     assert any("global_PASSERELLE_SECOURS : cité dans une route" in i for i in script.ignores)
     assert any("global_GRP_A_REVOIR : à revoir" in i for i in script.ignores)
-    assert '"CONFIG OBJECT ACTIVATE global=1",' in suppr
-    assert "global=1" not in script.retraits
+    assert "global=1" not in suppr and "CONFIG GLOBAL" not in script.retraits
     for texte in (lot, suppr):
         ns: dict = {}
         exec(texte, ns)
@@ -181,7 +234,7 @@ def test_lot_globaux_objet_local_existant(tmp_path, referentiel):
     script = generer_script_sns(inventaire, plan)
     assert any("global_SRV_APPLI : SIEGE_HST_DMZ_SRV-WEB existe déjà" in i for i in script.ignores)
     assert any("global_GRP_SERVEURS : membre(s) SIEGE_HST_SERVEURS_SRV-APPLI non créé(s)" in i for i in script.ignores)
-    assert "DELETE name=GRP_SERVEURS global=1" not in script.suppression_globaux
+    assert "DELETE name=GRP_SERVEURS\"" not in script.suppression_globaux
 
 
 def test_cli_sns_ecrit_lot_globaux(tmp_path, racine):
@@ -200,12 +253,12 @@ def test_cli_sns_ecrit_lot_globaux(tmp_path, racine):
     assert executer(
         ["script", str(dossier), "--plan", str(sortie / "plan.json"), "--sortie", str(sortie / "sns")]
     ) == 0
-    assert "global=1" not in (sortie / "sns" / "04-globaux.py").read_text(encoding="utf-8")
-    assert "global=1" in (sortie / "sns" / "05-suppression-globaux.py").read_text(encoding="utf-8")
+    assert "CONFIG GLOBAL" not in (sortie / "sns" / "04-globaux.py").read_text(encoding="utf-8")
+    assert "CONFIG GLOBAL OBJECT" in (sortie / "sns" / "05-suppression-globaux.py").read_text(encoding="utf-8")
 
 
-def test_global_avec_homonyme_local_non_supprime(tmp_path, referentiel):
-    """global=1 n'est pas documenté sur DELETE : un homonyme local serait supprimé à sa place."""
+def test_global_avec_homonyme_local_supprime_dans_l_espace_global(tmp_path, referentiel):
+    """CONFIG GLOBAL OBJECT … DELETE ne vise que le global : l'homonyme local n'est pas touché."""
     from dataclasses import replace
 
     from fwclean.audit import auditer
@@ -217,9 +270,8 @@ def test_global_avec_homonyme_local_non_supprime(tmp_path, referentiel):
     homonyme = Objet(sorte="hote", nom="SRV_RETIRE", empreinte=(("v4", "10.9.9.9", 32),), detail="10.9.9.9")
     inventaire = replace(inventaire, objets=inventaire.objets + (homonyme,))
     script = generer_script_sns(inventaire, plan)
-    assert "DELETE name=SRV_RETIRE" not in script.suppression_globaux
-    assert any("global_SRV_RETIRE : objet local ou natif homonyme SRV_RETIRE" in i for i in script.ignores)
-    assert "CONFIG OBJECT NETWORK DELETE name=LAN_USERS global=1" in script.suppression_globaux
+    assert "CONFIG GLOBAL OBJECT HOST DELETE name=SRV_RETIRE" in script.suppression_globaux
+    assert "CONFIG OBJECT HOST DELETE name=SRV_RETIRE" not in script.suppression_globaux
 
 
 def test_liste_cli_separee_par_des_virgules():
@@ -311,7 +363,7 @@ def test_execution_modify_on_refuse(monkeypatch):
 
 
 def test_execution_jusqua(monkeypatch):
-    commandes = ["CONFIG OBJECT HOST DELETE name=a global=1", "CONFIG OBJECT HOST DELETE name=b global=1"]
+    commandes = ["CONFIG GLOBAL OBJECT HOST DELETE name=a", "CONFIG GLOBAL OBJECT HOST DELETE name=b"]
     code, envoyees, _ = _executer_lot(monkeypatch, commandes, argv=("--jusqua", "1"))
     assert code == 0
     assert envoyees == ["MODIFY ON", commandes[0], "CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE", "<disconnect>"]
@@ -329,9 +381,7 @@ def test_version_cli_a_coller(tmp_path, referentiel):
         lignes = texte.splitlines()
         assert lignes[:2] == ["MODIFY ON", ""]
         assert not any(ligne.startswith("#") for ligne in lignes)
-        assert lignes[-2:] == ["CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE"] or lignes[-1] == (
-            "CONFIG OBJECT ACTIVATE global=1"
-        )
+        assert lignes[-2:] == ["CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE"]
     # Mêmes commandes que le script Python, dans le même ordre.
     ns: dict = {}
     exec(script.globaux, ns)

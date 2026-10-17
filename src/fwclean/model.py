@@ -24,6 +24,8 @@ class Objet:
     fige: str | None = None
     # Objet global SMC (SNS, dossier Global/) : non modifiable sur le firewall.
     globale: bool = False
+    # Adresses exportées d'un nom DNS (dernière résolution) : CONFIG OBJECT … NEW en exige une.
+    adresses: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -333,7 +333,7 @@ def _script(args: argparse.Namespace) -> int:
                     f"Objets globaux SMC : {c['globaux_crees']} objet(s) local(aux) créé(s), "
                     f"{c['globaux_remplaces']} remplacé(s) dans les règles et groupes "
                     f"({c['commandes_globaux']} commandes, lot 04) ; "
-                    f"{c['globaux_supprimes']} suppression(s) global=1 (lot 05)."
+                    f"{c['globaux_supprimes']} suppression(s) CONFIG GLOBAL OBJECT … DELETE (lot 05)."
                 )
                 ordre += " → 04 → 05"
             print(

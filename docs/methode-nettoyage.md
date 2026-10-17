@@ -210,14 +210,14 @@ Les groupes sont traités après leurs membres : un groupe imbriqué est créé 
 
 **Lots 04 et 05.** `fwclean script` écrit alors `04-globaux.py` et `05-suppression-globaux.py`, à passer après 01, 02 et 03 :
 
-1. création des objets locaux (`CONFIG OBJECT HOST|NETWORK|RANGE|FQDN|SERVICE|PROTOCOL NEW`, `GROUP|SERVICEGROUP NEW` puis `ADDTO`), commentaire `remplace global_X (SMC)` ;
+1. création des objets locaux (`CONFIG OBJECT HOST|NETWORK|FQDN|SERVICE|PROTOCOL NEW`, `GROUP|SERVICEGROUP NEW` puis `ADDTO`), commentaire `remplace global_X (SMC)`. Syntaxe du guide CLI serverd v5 : un hôte, même `resolve=dynamic`, et un FQDN exigent une adresse (`ip=` ou `ipv6=`), reprise de l'export (dernière résolution) ; une plage se crée par `HOST NEW begin= end=` (il n'y a pas de `RANGE NEW`) ;
 2. remplacement du global par l'objet local dans les règles (`CONFIG FILTER RULE UPDATE … global=0`) et dans les groupes locaux (`ADDTO` / `REMOVEFROM`) ; les groupes globaux ne sont pas modifiés ;
 3. activation du lot 04 : `CONFIG OBJECT ACTIVATE`, `CONFIG FILTER ACTIVATE` ;
-4. lot 05, suppression des globaux remplacés ou cités par rien : `CONFIG OBJECT <TYPE> DELETE name=<nom sans global_> global=1`, groupes englobants d'abord, puis `CONFIG OBJECT ACTIVATE global=1`.
+4. lot 05, suppression des globaux remplacés ou cités par rien : `CONFIG GLOBAL OBJECT <TYPE> DELETE name=<nom sans global_>`, groupes englobants d'abord, puis `CONFIG OBJECT ACTIVATE` (niveau `object,globalobject`) et `CONFIG FILTER ACTIVATE`.
 
-`global=1` n'est pas documenté sur `CONFIG OBJECT … DELETE` dans le guide CLI serverd : s'il est ignoré, la commande vise l'objet **local** de même nom. Le lot 05 écarte donc tout global dont le nom sans `global_` existe aussi en local ou parmi les objets natifs (`dns`, `bootps`, objets créés par le lot 04…) : il reste dans `ignores.txt`, à supprimer depuis SMC ou l'interface. Sur le SNS de test, passer d'abord une seule commande du lot 05 et vérifier que c'est bien le global qui disparaît.
+`CONFIG GLOBAL OBJECT … DELETE` (niveau `globalobject,modify`) ne vise que l'espace global : un objet local ou natif de même nom (`dns`, `bootps`, objets créés par le lot 04…) n'est pas touché. Sur le SNS de test, passer d'abord une seule commande du lot 05 (`--jusqua 1`) et vérifier que c'est bien le global qui disparaît.
 
-Restent dans `ignores.txt`, sans suppression : les globaux à revoir ; ceux cités par une route ou un NAT (l'objet local est créé, la route ou le NAT est à reprendre à la main) ; ceux encore cités par un groupe global conservé ou par un `ipproto` ; les créations non gérées (réseau IPv6, service à plusieurs plages : à créer à la main). Les syntaxes `NEW` et `global=1` n'ont pas été vérifiées sur un équipement : valider les lots en `--dry-run`, puis sur un SNS de test.
+Restent dans `ignores.txt`, sans suppression : les globaux à revoir ; ceux cités par une route ou un NAT (l'objet local est créé, la route ou le NAT est à reprendre à la main) ; ceux encore cités par un groupe global conservé ou par un `ipproto` ; les créations non gérées (réseau IPv6, service à plusieurs plages, nom DNS sans adresse dans l'export : à créer à la main). Valider les lots en `--dry-run`, puis sur un SNS de test.
 
 **Décommissionner la SMC.**
 
