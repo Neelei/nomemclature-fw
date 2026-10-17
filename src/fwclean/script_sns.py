@@ -1,4 +1,4 @@
-"""Scripts Python python-SNS-API à partir d'un plan Stormshield. Rien n'est envoyé à l'équipement."""
+"""Scripts Python (stormshield.sns.sslclient) à partir d'un plan Stormshield. Rien n'est envoyé à l'équipement."""
 
 from __future__ import annotations
 
@@ -14,8 +14,9 @@ from fwclean.sns_natifs import est_natif
 from fwclean.stormshield_natif import FIGE_DYNAMIQUE, PREFIXE_GLOBAL
 
 ACTIVATE = ("CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE")
-# Activation des objets globaux après leur suppression (syntaxe à valider en --dry-run puis
-# sur un SNS de test : non vérifiée sur un équipement).
+# `global=1` n'est pas documenté sur CONFIG OBJECT … DELETE (guide CLI serverd) : s'il est
+# ignoré, la commande vise l'objet local de même nom. Lot 05 à part, homonymes locaux exclus,
+# à valider sur un objet au SNS de test avant le reste.
 ACTIVATE_GLOBAUX = ACTIVATE + ("CONFIG OBJECT ACTIVATE global=1",)
 
 # sorte fwclean → type RENAME SNS / module DELETE.
@@ -49,18 +50,22 @@ _CHAMPS_REGLE = (
 
 _GABARIT = '''\
 #!/usr/bin/env python3
-"""__TITRE__
+\"\"\"__TITRE__
 
 AVERTISSEMENT SMC : ne pas redéployer depuis SMC après exécution, sinon les
 modifications locales sur le SNS sont écrasées.
 
-Dépendance : pip install python-SNS-API
-Rien n'est appliqué avec --dry-run.
-"""
+Dépendance : pip install stormshield.sns.sslclient
+Mot de passe : variable d'environnement SNS_PASS, sinon demandé au lancement.
+Rien n'est envoyé avec --dry-run. Arrêt à la première erreur hors suppression,
+sans activation ; reprendre ensuite avec --depuis N.
+\"\"\"
 
 from __future__ import annotations
 
 import argparse
+import getpass
+import os
 import sys
 
 COMMANDES: list[tuple[str, str]] = [
@@ -72,12 +77,20 @@ __ACTIVATE__
 )
 
 
+def _succes(reponse) -> tuple[bool, int | None, str]:
+    code = getattr(reponse, "ret", None)
+    texte = str(getattr(reponse, "output", reponse))
+    if code is None:
+        premiere = texte.splitlines()[0].split() if texte.strip() else []
+        code = int(premiere[0]) if premiere and premiere[0].isdigit() else None
+    return code is not None and 100 <= code < 200, code, texte
+
+
 def main(argv: list[str] | None = None) -> int:
     analyseur = argparse.ArgumentParser(description=__doc__)
     analyseur.add_argument("--host", default="192.168.0.254", help="Adresse du SNS")
     analyseur.add_argument("--port", type=int, default=443, help="Port HTTPS (défaut 443)")
     analyseur.add_argument("--user", default="admin", help="Compte admin SNS")
-    analyseur.add_argument("--password", default="", help="Mot de passe")
     analyseur.add_argument(
         "--verify-ssl",
         action="store_true",
@@ -88,58 +101,93 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Afficher les commandes sans se connecter",
     )
+    analyseur.add_argument(
+        "--depuis",
+        type=int,
+        default=1,
+        help="Reprendre à la commande N (numéro affiché), après un arrêt sur erreur",
+    )
     args = analyseur.parse_args(argv)
+    if not 1 <= args.depuis <= max(len(COMMANDES), 1):
+        print(f"--depuis : entre 1 et {len(COMMANDES)}", file=sys.stderr)
+        return 2
+    total = len(COMMANDES)
+    a_envoyer = list(enumerate(COMMANDES, start=1))[args.depuis - 1 :]
 
     if args.dry_run:
-        for commande, origine in COMMANDES:
-            print(f"# {origine}")
+        print("MODIFY ON")
+        for numero, (commande, origine) in a_envoyer:
+            print(f"# [{numero}/{total}] {origine}")
             print(commande)
         for commande in ACTIVATE:
             print(commande)
-        print(f"# dry-run : {len(COMMANDES)} commande(s), non envoyées", file=sys.stderr)
+        print(f"# dry-run : {len(a_envoyer)} commande(s) sur {total}, non envoyées", file=sys.stderr)
         return 0
 
     try:
         from stormshield.sns.sslclient import SSLClient
     except ImportError:
-        print("Installez python-SNS-API : pip install python-SNS-API", file=sys.stderr)
+        print("Installez le client SNS : pip install stormshield.sns.sslclient", file=sys.stderr)
         return 2
 
-    client = SSLClient(
-        host=args.host,
-        port=args.port,
-        user=args.user,
-        password=args.password,
-        sslverify=args.verify_ssl,
-    )
-    ok = ignore = erreur = 0
+    mot_de_passe = os.environ.get("SNS_PASS") or getpass.getpass(f"Mot de passe {args.user}@{args.host} : ")
     try:
-        for commande, origine in COMMANDES:
-            reponse = client.send_command(commande)
-            code = getattr(reponse, "ret", None)
-            if code is None and hasattr(reponse, "output"):
-                premiere = str(reponse.output).splitlines()[0] if reponse.output else ""
-                code = int(premiere.split()[0]) if premiere.split() else None
-            texte = str(getattr(reponse, "output", reponse))
-            if code == 100:
+        client = SSLClient(
+            host=args.host,
+            port=args.port,
+            user=args.user,
+            password=mot_de_passe,
+            sslverifyhost=args.verify_ssl,
+            sslverifypeer=args.verify_ssl,
+        )
+    except Exception as exc:  # noqa: BLE001 — connexion, TLS ou authentification
+        print(f"Connexion impossible à {args.host}:{args.port} : {exc}", file=sys.stderr)
+        return 2
+    ok = ignore = 0
+    arret: int | None = None
+    try:
+        reussi, code, texte = _succes(client.send_command("MODIFY ON"))
+        if not reussi:
+            print(f"MODIFY ON refusé (code={code}) : un autre administrateur a-t-il la main ?", file=sys.stderr)
+            print(texte, file=sys.stderr)
+            return 1
+        for numero, (commande, origine) in a_envoyer:
+            reussi, code, texte = _succes(client.send_command(commande))
+            if reussi:
                 ok += 1
-                print(f"OK  {commande}  # {origine}")
-            elif code == 200 and "00e01c00" in texte:
+                avertissement = "" if code == 100 else f"  [code {code}] " + texte.strip().splitlines()[-1]
+                print(f"OK  [{numero}/{total}] {commande}  # {origine}{avertissement}")
+            elif " DELETE " in commande:
                 ignore += 1
-                print(f"IGN {commande}  # encore utilisé — {origine}")
+                print(f"IGN [{numero}/{total}] {commande}  # non supprimé (code={code}) — {origine}")
+                print(texte.strip(), file=sys.stderr)
             else:
-                erreur += 1
-                print(f"ERR {commande}  # code={code} {origine}", file=sys.stderr)
-                print(texte, file=sys.stderr)
-        for commande in ACTIVATE:
-            reponse = client.send_command(commande)
-            print(f"ACT {commande} -> {getattr(reponse, 'ret', reponse)}")
+                arret = numero
+                print(f"ERR [{numero}/{total}] {commande}  # code={code} {origine}", file=sys.stderr)
+                print(texte.strip(), file=sys.stderr)
+                break
+        if arret is None:
+            for commande in ACTIVATE:
+                reussi, code, texte = _succes(client.send_command(commande))
+                print(f"ACT {commande} -> code={code}")
+                if not reussi:
+                    print(texte.strip(), file=sys.stderr)
+                    arret = 0
     finally:
-        close = getattr(client, "close", None) or getattr(client, "disconnect", None)
-        if callable(close):
-            close()
-    print(f"Résumé : ok={ok}, ignorés={ignore}, erreurs={erreur}", file=sys.stderr)
-    return 1 if erreur else 0
+        client.disconnect()
+    print(f"Résumé : ok={ok}, suppressions refusées={ignore}", file=sys.stderr)
+    if arret:
+        print(
+            f"Arrêt sur la commande {arret} : rien n'a été activé. Les commandes 1 à {arret - 1} "
+            "sont écrites mais pas activées : corriger puis relancer avec "
+            f"--depuis {arret}, ou restaurer la sauvegarde.",
+            file=sys.stderr,
+        )
+        return 1
+    if arret == 0:
+        print("Activation en erreur : vérifier la configuration sur le SNS.", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
@@ -269,7 +317,9 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
             cmds_retrait.append((_commande_delete(sorte, nom), f"retrait — {item.get('motif', 'orphelin')}"))
             _oublier(etat, espace, nom)
 
-    cmds_globaux, compteurs_globaux = _globaux(etat, plan.get("globaux", []), courant, ignores)
+    cmds_globaux, cmds_suppr_globaux, compteurs_globaux = _globaux(
+        etat, plan.get("globaux", []), courant, ignores
+    )
 
     return Script(
         renommages=_rendre_script("01 — Renommages SNS", cmds_renom, lot),
@@ -284,11 +334,17 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
             "commandes_fusions": len(cmds_fusion),
             "commandes_retraits": len(cmds_retrait),
             "commandes_globaux": len(cmds_globaux),
+            "commandes_suppression_globaux": len(cmds_suppr_globaux),
             **compteurs_globaux,
         },
         globaux=_rendre_script(
             "04 — Remplacement des objets globaux SMC par des objets locaux",
             cmds_globaux,
+            lot,
+        ),
+        suppression_globaux=_rendre_script(
+            "05 — Suppression des objets globaux SMC remplacés (global=1, à valider sur un objet d'abord)",
+            cmds_suppr_globaux,
             lot,
             ACTIVATE_GLOBAUX,
         ),
@@ -300,9 +356,9 @@ def _globaux(
     items: list[dict],
     courant: Callable[[str, str], str | None],
     ignores: list[str],
-) -> tuple[list[tuple[str, str]], dict[str, int]]:
-    """Lot 04 : création des objets locaux, réécriture des règles et groupes locaux, puis
-    suppression des objets globaux remplacés ou cités par rien (groupes d'abord)."""
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]], dict[str, int]]:
+    """Lot 04 : création des objets locaux, réécriture des règles et groupes locaux.
+    Lot 05 : suppression des objets globaux remplacés ou cités par rien (groupes d'abord)."""
     commandes: list[tuple[str, str]] = []
     globaux = {cle for cle, objet in etat.objets.items() if objet.globale}
     remplacants: dict[tuple[str, str], str] = {}
@@ -370,10 +426,20 @@ def _globaux(
         remplaces += 1
         a_supprimer.append((espace, ancien))
 
+    suppressions: list[tuple[str, str]] = []
     supprimes = 0
-    restants = sorted(
-        set(a_supprimer), key=lambda cle: (cle not in groupes_globaux, cle[0], cle[1])
-    )
+    candidats: set[tuple[str, str]] = set()
+    for espace, nom in sorted(set(a_supprimer)):
+        nu = nom.removeprefix(PREFIXE_GLOBAL)
+        homonyme = etat.objets.get((espace, nu))
+        if (homonyme is not None and not homonyme.globale) or est_natif(etat.objets[(espace, nom)].sorte, nu):
+            ignores.append(
+                f"suppression de {nom} : objet local ou natif homonyme {nu}, "
+                "à supprimer depuis SMC ou l'interface (global=1 non garanti)"
+            )
+            continue
+        candidats.add((espace, nom))
+    restants = sorted(candidats, key=lambda cle: (cle not in groupes_globaux, cle[0], cle[1]))
     progres = True
     while restants and progres:
         progres = False
@@ -382,7 +448,7 @@ def _globaux(
             if cle in etat.cites_route_nat or _encore_cite(etat, espace, nom) or _cite_ipproto(etat, espace, nom):
                 continue
             objet = etat.objets[cle]
-            commandes.append(
+            suppressions.append(
                 (
                     f"{_commande_delete(objet.sorte, nom.removeprefix(PREFIXE_GLOBAL))} global=1",
                     f"suppression objet global — {nom}",
@@ -394,7 +460,7 @@ def _globaux(
             progres = True
     for espace, nom in restants:
         ignores.append(f"suppression de {nom} : encore référencé après remplacement, à reprendre à la main")
-    return commandes, {
+    return commandes, suppressions, {
         "globaux_crees": crees,
         "globaux_remplaces": remplaces,
         "globaux_supprimes": supprimes,
@@ -626,7 +692,8 @@ def _q(valeur: str) -> str:
 
 
 def _liste(valeurs: tuple[str, ...]) -> str:
-    return _q("|".join(valeurs)) if valeurs else '""'
+    # Le fichier Filter sépare les objets par `|`, la CLI (RULE UPDATE) par `,`.
+    return _q(",".join(valeurs)) if valeurs else '""'
 
 
 def _rendre_script(

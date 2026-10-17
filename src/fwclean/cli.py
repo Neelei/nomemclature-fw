@@ -122,7 +122,8 @@ def executer(argv: list[str] | None = None) -> int:
         description=(
             "Relit la sauvegarde et le plan. FortiGate : 01-renommages.txt, 02-fusions.txt, "
             "03-retraits.txt. Stormshield : 01-renommages.py, 02-fusions.py, 03-retraits.py, "
-            "et 04-globaux.py si des objets globaux SMC sont lus (python-SNS-API, --dry-run). "
+            "et 04-globaux.py, 05-suppression-globaux.py si des objets globaux SMC sont lus "
+            "(stormshield.sns.sslclient, --dry-run). "
             "Rien n'est envoyé à l'équipement."
         ),
     )
@@ -305,6 +306,9 @@ def _script(args: argparse.Namespace) -> int:
             (dossier / "03-retraits.py").write_text(resultat.retraits, encoding="utf-8")
             if plan.get("globaux"):
                 (dossier / "04-globaux.py").write_text(resultat.globaux, encoding="utf-8")
+                (dossier / "05-suppression-globaux.py").write_text(
+                    resultat.suppression_globaux, encoding="utf-8"
+                )
             ignores = "\n".join(f"- {ligne}" for ligne in resultat.ignores) or "Aucun."
             (dossier / "ignores.txt").write_text(
                 "Opérations du plan non reprises dans les scripts SNS :\n\n" + ignores + "\n",
@@ -323,11 +327,11 @@ def _script(args: argparse.Namespace) -> int:
             if plan.get("globaux"):
                 print(
                     f"Objets globaux SMC : {c['globaux_crees']} objet(s) local(aux) créé(s), "
-                    f"{c['globaux_remplaces']} remplacé(s) dans les règles et groupes, "
-                    f"{c['globaux_supprimes']} suppression(s) global=1 "
-                    f"({c['commandes_globaux']} commandes)."
+                    f"{c['globaux_remplaces']} remplacé(s) dans les règles et groupes "
+                    f"({c['commandes_globaux']} commandes, lot 04) ; "
+                    f"{c['globaux_supprimes']} suppression(s) global=1 (lot 05)."
                 )
-                ordre += " → 04"
+                ordre += " → 04 → 05"
             print(f"Exécuter avec --dry-run puis sans, dans l'ordre {ordre}. Rien n'a été envoyé.")
             return 0
 

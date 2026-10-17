@@ -1,4 +1,4 @@
-"""Génération des scripts Python SNS (python-SNS-API)."""
+"""Génération des scripts Python SNS (stormshield.sns.sslclient)."""
 
 import ast
 import json
@@ -150,21 +150,23 @@ def test_lot_globaux(tmp_path, referentiel):
     assert "position=10 dsttarget=SIEGE_HST_DMZ_SRV-WEB output=xml" in lot
     assert "position=10 dstport=SG_WEB-APPLI output=xml" in lot
     assert "position=11 dstport=SVC_TCP_8080_HTTP-APPLI output=xml" in lot
-    # Suppressions global=1, groupe englobant avant le groupe contenu, après les réécritures.
-    assert lot.index("RULE UPDATE") < lot.index("DELETE name=GRP_IMBRIQUE global=1")
-    assert lot.index("DELETE name=GRP_IMBRIQUE global=1") < lot.index("DELETE name=GRP_SERVEURS global=1")
-    assert "CONFIG OBJECT HOST DELETE name=SRV_RETIRE global=1" in lot
-    assert "CONFIG OBJECT NETWORK DELETE name=LAN_USERS global=1" in lot
+    # Lot 04 : aucune suppression ; elles sont dans le lot 05, groupe englobant d'abord.
+    assert "global=1" not in lot and "DELETE name=" not in lot
+    suppr = script.suppression_globaux
+    assert suppr.index("DELETE name=GRP_IMBRIQUE global=1") < suppr.index("DELETE name=GRP_SERVEURS global=1")
+    assert "CONFIG OBJECT HOST DELETE name=SRV_RETIRE global=1" in suppr
+    assert "CONFIG OBJECT NETWORK DELETE name=LAN_USERS global=1" in suppr
     # Cité par une route, membre d'un groupe global à revoir, ou à revoir : pas supprimés.
     for nom in ("PASSERELLE_SECOURS", "SRV_APPLI", "NAS_INCONNU", "GRP_A_REVOIR"):
-        assert f"DELETE name={nom} global=1" not in lot
+        assert f"DELETE name={nom} global=1" not in suppr
     assert any("global_PASSERELLE_SECOURS : cité dans une route" in i for i in script.ignores)
     assert any("global_GRP_A_REVOIR : à revoir" in i for i in script.ignores)
-    assert '"CONFIG OBJECT ACTIVATE global=1",' in lot
+    assert '"CONFIG OBJECT ACTIVATE global=1",' in suppr
     assert "global=1" not in script.retraits
-    ns: dict = {}
-    exec(lot, ns)
-    assert ns["main"](["--dry-run"]) == 0
+    for texte in (lot, suppr):
+        ns: dict = {}
+        exec(texte, ns)
+        assert ns["main"](["--dry-run"]) == 0
 
 
 def test_lot_globaux_objet_local_existant(tmp_path, referentiel):
@@ -179,7 +181,7 @@ def test_lot_globaux_objet_local_existant(tmp_path, referentiel):
     script = generer_script_sns(inventaire, plan)
     assert any("global_SRV_APPLI : SIEGE_HST_DMZ_SRV-WEB existe déjà" in i for i in script.ignores)
     assert any("global_GRP_SERVEURS : membre(s) SIEGE_HST_SERVEURS_SRV-APPLI non créé(s)" in i for i in script.ignores)
-    assert "DELETE name=GRP_SERVEURS global=1" not in script.globaux
+    assert "DELETE name=GRP_SERVEURS global=1" not in script.suppression_globaux
 
 
 def test_cli_sns_ecrit_lot_globaux(tmp_path, racine):
@@ -198,4 +200,111 @@ def test_cli_sns_ecrit_lot_globaux(tmp_path, racine):
     assert executer(
         ["script", str(dossier), "--plan", str(sortie / "plan.json"), "--sortie", str(sortie / "sns")]
     ) == 0
-    assert "global=1" in (sortie / "sns" / "04-globaux.py").read_text(encoding="utf-8")
+    assert "global=1" not in (sortie / "sns" / "04-globaux.py").read_text(encoding="utf-8")
+    assert "global=1" in (sortie / "sns" / "05-suppression-globaux.py").read_text(encoding="utf-8")
+
+
+def test_global_avec_homonyme_local_non_supprime(tmp_path, referentiel):
+    """global=1 n'est pas documenté sur DELETE : un homonyme local serait supprimé à sa place."""
+    from dataclasses import replace
+
+    from fwclean.audit import auditer
+    from fwclean.model import Objet
+    from fwclean.report import plan_dict
+
+    inventaire = charger([_export_slot_05(tmp_path)])
+    plan = plan_dict(auditer(inventaire, referentiel))
+    homonyme = Objet(sorte="hote", nom="SRV_RETIRE", empreinte=(("v4", "10.9.9.9", 32),), detail="10.9.9.9")
+    inventaire = replace(inventaire, objets=inventaire.objets + (homonyme,))
+    script = generer_script_sns(inventaire, plan)
+    assert "DELETE name=SRV_RETIRE" not in script.suppression_globaux
+    assert any("global_SRV_RETIRE : objet local ou natif homonyme SRV_RETIRE" in i for i in script.ignores)
+    assert "CONFIG OBJECT NETWORK DELETE name=LAN_USERS global=1" in script.suppression_globaux
+
+
+def test_liste_cli_separee_par_des_virgules():
+    from fwclean.script_sns import _liste
+
+    assert _liste(("a", "b c")) == '"a,b c"'
+    assert _liste(("a", "b")) == "a,b"
+
+
+class _Reponse:
+    def __init__(self, ret: int, output: str = ""):
+        self.ret = ret
+        self.output = output or f'{ret} code=00a00100 msg="x"'
+
+
+def _executer_lot(monkeypatch, commandes, refus=(), argv=()):
+    """Exécute un script généré contre un faux SSLClient ; renvoie (code, commandes envoyées, kwargs)."""
+    import sys
+    import types
+
+    from fwclean.script_sns import _rendre_script
+
+    envoyees: list[str] = []
+    connexion: dict = {}
+
+    class FauxClient:
+        def __init__(self, **kwargs):
+            connexion.update(kwargs)
+
+        def send_command(self, commande):
+            envoyees.append(commande)
+            return _Reponse(200 if commande in refus else 100)
+
+        def disconnect(self):
+            envoyees.append("<disconnect>")
+
+    module = types.ModuleType("stormshield.sns.sslclient")
+    module.SSLClient = FauxClient
+    for nom in ("stormshield", "stormshield.sns"):
+        monkeypatch.setitem(sys.modules, nom, types.ModuleType(nom))
+    monkeypatch.setitem(sys.modules, "stormshield.sns.sslclient", module)
+    monkeypatch.setenv("SNS_PASS", "secret-de-test")
+    ns: dict = {}
+    exec(_rendre_script("test", [(c, "o") for c in commandes], 20), ns)
+    code = ns["main"](["--host", "10.0.0.1", *argv])
+    return code, envoyees, connexion
+
+
+def test_execution_modify_on_et_connexion(monkeypatch):
+    code, envoyees, connexion = _executer_lot(monkeypatch, ["CONFIG OBJECT RENAME type=host oldname=a newname=b"])
+    assert code == 0
+    assert envoyees == [
+        "MODIFY ON",
+        "CONFIG OBJECT RENAME type=host oldname=a newname=b",
+        "CONFIG OBJECT ACTIVATE",
+        "CONFIG FILTER ACTIVATE",
+        "<disconnect>",
+    ]
+    assert connexion["password"] == "secret-de-test"
+    assert connexion["sslverifyhost"] is False and connexion["sslverifypeer"] is False
+    assert "sslverify" not in connexion
+
+
+def test_execution_arret_sans_activation(monkeypatch, capsys):
+    commandes = [
+        "CONFIG OBJECT HOST DELETE name=deja_utilise",
+        "CONFIG FILTER RULE UPDATE index=05 global=0 type=filter position=1 srctarget=x output=xml",
+        "CONFIG OBJECT HOST DELETE name=y",
+    ]
+    code, envoyees, _ = _executer_lot(monkeypatch, commandes, refus={commandes[0], commandes[1]})
+    assert code == 1
+    # DELETE refusé : on continue ; RULE UPDATE refusé : arrêt, ni DELETE suivant ni ACTIVATE.
+    assert envoyees == ["MODIFY ON", *commandes[:2], "<disconnect>"]
+    erreurs = capsys.readouterr().err
+    assert "--depuis 2" in erreurs and "secret-de-test" not in erreurs
+
+
+def test_execution_reprise_depuis(monkeypatch):
+    commandes = ["CONFIG OBJECT HOST DELETE name=a", "CONFIG OBJECT HOST DELETE name=b"]
+    code, envoyees, _ = _executer_lot(monkeypatch, commandes, argv=("--depuis", "2"))
+    assert code == 0
+    assert envoyees[:2] == ["MODIFY ON", "CONFIG OBJECT HOST DELETE name=b"]
+
+
+def test_execution_modify_on_refuse(monkeypatch):
+    code, envoyees, _ = _executer_lot(monkeypatch, ["CONFIG OBJECT HOST DELETE name=a"], refus={"MODIFY ON"})
+    assert code == 1
+    assert envoyees == ["MODIFY ON", "<disconnect>"]

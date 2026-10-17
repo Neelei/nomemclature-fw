@@ -208,21 +208,23 @@ Un SNS géré par SMC reçoit des objets globaux, rangés dans `Global/object`, 
 
 Les groupes sont traités après leurs membres : un groupe imbriqué est créé après le groupe qu'il contient, avec les membres traduits (`membres` dans le plan).
 
-**Lot 04.** `fwclean script` écrit alors `04-globaux.py`, à passer après 01, 02 et 03 :
+**Lots 04 et 05.** `fwclean script` écrit alors `04-globaux.py` et `05-suppression-globaux.py`, à passer après 01, 02 et 03 :
 
 1. création des objets locaux (`CONFIG OBJECT HOST|NETWORK|RANGE|FQDN|SERVICE|PROTOCOL NEW`, `GROUP|SERVICEGROUP NEW` puis `ADDTO`), commentaire `remplace global_X (SMC)` ;
 2. remplacement du global par l'objet local dans les règles (`CONFIG FILTER RULE UPDATE … global=0`) et dans les groupes locaux (`ADDTO` / `REMOVEFROM`) ; les groupes globaux ne sont pas modifiés ;
-3. suppression des globaux remplacés ou cités par rien : `CONFIG OBJECT <TYPE> DELETE name=<nom sans global_> global=1`, groupes englobants d'abord ;
-4. activation : `CONFIG OBJECT ACTIVATE`, `CONFIG FILTER ACTIVATE`, `CONFIG OBJECT ACTIVATE global=1`.
+3. activation du lot 04 : `CONFIG OBJECT ACTIVATE`, `CONFIG FILTER ACTIVATE` ;
+4. lot 05, suppression des globaux remplacés ou cités par rien : `CONFIG OBJECT <TYPE> DELETE name=<nom sans global_> global=1`, groupes englobants d'abord, puis `CONFIG OBJECT ACTIVATE global=1`.
 
-Restent dans `ignores.txt`, sans suppression : les globaux à revoir ; ceux cités par une route ou un NAT (l'objet local est créé, la route ou le NAT est à reprendre à la main) ; ceux encore cités par un groupe global conservé ou par un `ipproto` ; les créations non gérées (réseau IPv6, service à plusieurs plages : à créer à la main). Les syntaxes `NEW` et `global=1` n'ont pas été vérifiées sur un équipement : valider le lot en `--dry-run`, puis sur un SNS de test.
+`global=1` n'est pas documenté sur `CONFIG OBJECT … DELETE` dans le guide CLI serverd : s'il est ignoré, la commande vise l'objet **local** de même nom. Le lot 05 écarte donc tout global dont le nom sans `global_` existe aussi en local ou parmi les objets natifs (`dns`, `bootps`, objets créés par le lot 04…) : il reste dans `ignores.txt`, à supprimer depuis SMC ou l'interface. Sur le SNS de test, passer d'abord une seule commande du lot 05 et vérifier que c'est bien le global qui disparaît.
+
+Restent dans `ignores.txt`, sans suppression : les globaux à revoir ; ceux cités par une route ou un NAT (l'objet local est créé, la route ou le NAT est à reprendre à la main) ; ceux encore cités par un groupe global conservé ou par un `ipproto` ; les créations non gérées (réseau IPv6, service à plusieurs plages : à créer à la main). Les syntaxes `NEW` et `global=1` n'ont pas été vérifiées sur un équipement : valider les lots en `--dry-run`, puis sur un SNS de test.
 
 **Décommissionner la SMC.**
 
 1. Dans la SMC, copier les règles globales dans la politique locale du firewall (elles citent encore les objets globaux), déployer une dernière fois, puis détacher le firewall de la SMC.
 2. Refaire l'export du SNS, dossier `Global/` compris, dans `inbox/stormshield/`.
 3. `fwclean audit inbox/stormshield --sortie out/stormshield`, relire la section « Objets globaux SMC » du rapport (les `revoir` : compléter `reseaux.csv` ou traiter à la main).
-4. `fwclean script inbox/stormshield --plan out/stormshield/plan.json --sortie out/stormshield`, puis `01` → `02` → `03` → `04`, chacun en `--dry-run` d'abord.
+4. `fwclean script inbox/stormshield --plan out/stormshield/plan.json --sortie out/stormshield`, puis `01` → `02` → `03` → `04` → `05`, chacun en `--dry-run` d'abord.
 5. Ne plus redéployer depuis la SMC : elle recréerait les objets globaux et écraserait la politique locale.
 6. Refaire l'export et l'audit : il ne doit plus rester d'objets globaux, sauf ceux de `ignores.txt` traités à la main.
 
@@ -244,7 +246,7 @@ Les noms sont comparés par espace : le service `router` (`520/udp`) est natif, 
 
 **VLAN et interface.** Le VLAN et l'interface d'un réseau SNS viennent de `reseaux.csv` : `fwclean reseaux` sur le fichier `Network` y écrit le `Tag` et le `Name` des interfaces à adresse statique. Sur un SNS de sortie Internet dont les VLAN internes sont en `dhcp` ou routés vers un autre firewall, ce sont les lignes générées depuis le FortiGate qui donnent VLAN et interface. La forme des noms réseau est la même que FortiGate (`{SITE}_NET_[V{VLAN}_]{INTERFACE}`).
 
-Le plan relu s'applique avec les scripts python-SNS-API de `fwclean script` (voir le README).
+Le plan relu s'applique avec les scripts Python (`stormshield.sns.sslclient`) de `fwclean script` (voir le README). Chaque script prend la main (`MODIFY ON`), lit le mot de passe dans `$SNS_PASS`, sépare les objets d'une règle par `,` (la CLI ; le fichier `Filter` utilise `|`), continue après une suppression refusée mais s'arrête à toute autre erreur sans rien activer ; `--depuis N` reprend à la commande N. Les positions de règles sont les numéros de ligne de la section `[Filter]` du slot, séparateurs compris : les comparer à l'interface avant le lot 04.
 
 ### Stormshield (CSV)
 
