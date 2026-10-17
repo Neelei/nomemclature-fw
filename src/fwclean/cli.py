@@ -122,7 +122,8 @@ def executer(argv: list[str] | None = None) -> int:
         description=(
             "Relit la sauvegarde et le plan. FortiGate : 01-renommages.txt, 02-fusions.txt, "
             "03-retraits.txt. Stormshield : 01-renommages.py, 02-fusions.py, 03-retraits.py, "
-            "et 04-globaux.py, 05-suppression-globaux.py si des objets globaux SMC sont lus "
+            "et 04-globaux.py, 05-suppression-globaux.py si des objets globaux SMC sont lus, "
+            "06-natifs.py si des natifs Network_X / Firewall_X sont cités par les règles "
             "(stormshield.sns.sslclient, --dry-run). "
             "Rien n'est envoyé à l'équipement."
         ),
@@ -193,6 +194,12 @@ def _auditer(args: argparse.Namespace) -> int:
             actions[item.action] = actions.get(item.action, 0) + 1
         detail = ", ".join(f"{action} {nombre}" for action, nombre in sorted(actions.items()))
         print(f"Objets globaux SMC : {len(resultat.globaux)} ({detail}).")
+    if resultat.natifs_interfaces:
+        actions = {}
+        for item in resultat.natifs_interfaces:
+            actions[item.action] = actions.get(item.action, 0) + 1
+        detail = ", ".join(f"{action} {nombre}" for action, nombre in sorted(actions.items()))
+        print(f"Natifs d'interface (Network_, Firewall_) : {len(resultat.natifs_interfaces)} ({detail}).")
     for message in resultat.inventaire.avertissements:
         print(f"Avertissement : {message}")
     print("Aucune modification appliquée.")
@@ -309,8 +316,12 @@ def _script(args: argparse.Namespace) -> int:
                 (dossier / "05-suppression-globaux.py").write_text(
                     resultat.suppression_globaux, encoding="utf-8"
                 )
+            if plan.get("natifs_interfaces"):
+                (dossier / "06-natifs.py").write_text(resultat.natifs, encoding="utf-8")
             for nom, texte in resultat.cli.items():
                 if nom.startswith(("04-", "05-")) and not plan.get("globaux"):
+                    continue
+                if nom.startswith("06-") and not plan.get("natifs_interfaces"):
                     continue
                 (dossier / f"{nom}.cli.txt").write_text(texte, encoding="utf-8")
             ignores = "\n".join(f"- {ligne}" for ligne in resultat.ignores) or "Aucun."
@@ -336,6 +347,13 @@ def _script(args: argparse.Namespace) -> int:
                     f"{c['globaux_supprimes']} suppression(s) CONFIG GLOBAL OBJECT … DELETE (lot 05)."
                 )
                 ordre += " → 04 → 05"
+            if plan.get("natifs_interfaces"):
+                print(
+                    f"Natifs d'interface : {c['natifs_crees']} objet(s) local(aux) créé(s), "
+                    f"{c['natifs_reutilises']} réutilisé(s) ({c['commandes_natifs']} commandes, lot 06, "
+                    "sans DELETE)."
+                )
+                ordre += " → 06"
             print(
                 f"Exécuter avec --dry-run puis sans, dans l'ordre {ordre} ; ou coller les fichiers "
                 ".cli.txt dans la console CLI du SNS. Rien n'a été envoyé."

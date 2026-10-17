@@ -181,7 +181,7 @@ def test_exemple_natif(racine, referentiel):
     inventaire = charger([racine / "examples" / "stormshield-natif"])
     resultat = auditer(inventaire, referentiel)
     assert inventaire.constructeur == "stormshield"
-    assert len(inventaire.regles) == 9
+    assert len(inventaire.regles) == 11
     assert inventaire.retraits_suspendus is None
     assert [(item.sorte, item.nom) for item in resultat.retraits] == [
         ("groupe-adresses", "grp_oublie"),
@@ -488,3 +488,51 @@ def test_globaux_non_cites_a_revoir_si_retraits_suspendus(racine, tmp_path, refe
     retire = next(item for item in resultat.globaux if item.ancien == "global_SRV_RETIRE")
     assert retire.action == "revoir"
     assert "retraits suspendus" in retire.commentaire
+
+
+def test_lecture_des_interfaces(racine):
+    from fwclean.model import Interface
+    from fwclean.stormshield_natif import lire_interfaces
+
+    interfaces = {i.nom: i for i in lire_interfaces((racine / "examples" / "stormshield-natif" / "Network").read_text())}
+    assert interfaces["out"] == Interface(nom="out", adresse="203.0.113.2", prefixe=24)
+    assert interfaces["LAN"] == Interface(nom="LAN", adresse="10.0.0.254", prefixe=24)
+    assert interfaces["in"].dhcp and interfaces["in"].adresse is None
+
+
+def test_natifs_d_interface_remplaces(racine, referentiel):
+    resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), referentiel)
+    natifs = {item.natif: item for item in resultat.natifs_interfaces}
+    assert "Network_internals" not in natifs
+    # Network_LAN : réseau de l'interface LAN, identique à l'objet local conservé de la fusion.
+    assert (natifs["Network_LAN"].action, natifs["Network_LAN"].nouveau) == ("reutiliser", "SIEGE_NET_V10_LAN-USERS")
+    assert (natifs["Firewall_LAN"].action, natifs["Firewall_LAN"].nouveau) == ("creer", "SIEGE_HST_FW_LAN-USERS")
+    assert natifs["Firewall_LAN"].contenu == "10.0.0.254"
+    assert (natifs["Firewall_out"].nouveau, natifs["Firewall_out"].nat) == ("SIEGE_HST_FW_WAN", ("nat nat1",))
+    for nom in ("Firewall_in", "Network_in"):
+        assert natifs[nom].action == "revoir" and "DHCP" in natifs[nom].commentaire
+    assert natifs["Network_LAN"].references == ("r8",)
+    from fwclean.report import _markdown, plan_dict
+
+    assert plan_dict(resultat)["natifs_interfaces"][0]["natif"] == "Firewall_in"
+    assert "## Natifs remplacés" in _markdown(resultat)
+    assert "| Natifs remplacés (Network_, Firewall_) | 3 |" in _markdown(resultat)
+
+
+def test_natif_reseau_hors_reseaux_csv():
+    from fwclean.model import Interface, Inventaire, Regle
+    from fwclean.sites import analyser_reseaux
+
+    referentiel = analyser_reseaux("reseau;site;vlan;interface\n10.0.0.0/16;siege;;LAN-LARGE\n")
+    inventaire = Inventaire(
+        constructeur="stormshield",
+        sources=("test",),
+        objets=(),
+        regles=(Regle(nom="r", action="allow", active=True, sources=("Network_LAN", "Firewall_LAN")),),
+        interfaces=(Interface(nom="LAN", adresse="10.0.0.254", prefixe=24),),
+    )
+    natifs = {item.natif: item for item in auditer(inventaire, referentiel).natifs_interfaces}
+    assert natifs["Network_LAN"].action == "revoir"
+    assert "plus large" in natifs["Network_LAN"].commentaire
+    # L'adresse du firewall se localise dans le réseau large : l'hôte est créé.
+    assert natifs["Firewall_LAN"].nouveau == "SIEGE_HST_FW_LAN-LARGE"

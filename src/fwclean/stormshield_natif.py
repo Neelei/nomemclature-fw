@@ -22,7 +22,7 @@ from fwclean.contenu import (
     fqdn_cle,
     membres_tries,
 )
-from fwclean.model import ErreurLecture, Inventaire, Lien, Objet, Regle
+from fwclean.model import ErreurLecture, Interface, Inventaire, Lien, Objet, Regle
 
 Reseau = ipaddress.IPv4Network | ipaddress.IPv6Network
 
@@ -102,6 +102,7 @@ def assembler_natif(
     regles: list[Regle] = []
     liens: list[Lien] = []
     vlans: list[tuple[Reseau, int]] = []
+    interfaces: list[Interface] = []
     lus: set[str] = set()
     fournis_non_lus = list(non_lus)
     filtres = [label for genre, label, _texte in fichiers if genre == "filter"]
@@ -133,6 +134,7 @@ def assembler_natif(
             liens.extend(lire_routes_natives(texte))
         elif genre == "network":
             vlans.extend(vlans_natifs(texte))
+            interfaces.extend(lire_interfaces(texte))
         elif genre in NON_LUS:
             if any(_sans_commentaire(ligne.strip()) for ligne in texte.splitlines()):
                 fournis_non_lus.append(label)
@@ -181,6 +183,7 @@ def assembler_natif(
         avertissements=tuple(avertissements),
         non_definis=non_definis,
         retraits_suspendus=suspension,
+        interfaces=tuple(interfaces),
     )
 
 
@@ -598,6 +601,29 @@ def interfaces_natives(texte: str) -> list[dict[str, str]]:
             valeurs[cle.strip()] = valeur.strip().strip('"')
         interfaces.append(valeurs)
     return interfaces
+
+
+def lire_interfaces(texte: str) -> tuple[Interface, ...]:
+    """Interfaces nommées : adresse IPv4 principale (Address/Mask), DHCP, ou sans adresse."""
+    lues: list[Interface] = []
+    for valeurs in interfaces_natives(texte):
+        nom = valeurs.get("Name", "")
+        if not nom:
+            continue
+        adresse = valeurs.get("Address", "")
+        if adresse.lower() == "dhcp":
+            lues.append(Interface(nom=nom, dhcp=True))
+            continue
+        try:
+            reseau = ipaddress.ip_interface(f"{adresse}/{valeurs.get('Mask', '')}")
+        except ValueError:
+            lues.append(Interface(nom=nom))
+            continue
+        if reseau.version != 4:
+            lues.append(Interface(nom=nom))
+            continue
+        lues.append(Interface(nom=nom, adresse=str(reseau.ip), prefixe=reseau.network.prefixlen))
+    return tuple(lues)
 
 
 def reseaux_interface(interface: dict[str, str]) -> list[Reseau]:

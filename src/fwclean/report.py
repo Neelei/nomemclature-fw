@@ -82,6 +82,22 @@ def plan_dict(resultat: Resultat) -> dict:
             }
             for item in resultat.globaux
         ]
+    if resultat.natifs_interfaces:
+        plan["natifs_interfaces"] = [
+            {
+                "natif": item.natif,
+                "sorte": item.sorte,
+                "interface": item.interface,
+                "action": item.action,
+                "nouveau": item.nouveau,
+                "contenu": item.contenu,
+                "references": list(item.references),
+                "groupes": list(item.groupes),
+                "nat": list(item.nat),
+                "commentaire": item.commentaire,
+            }
+            for item in resultat.natifs_interfaces
+        ]
     return plan
 
 
@@ -120,6 +136,9 @@ def _markdown(resultat: Resultat) -> str:
         lignes.append(f"| Objets natifs SNS ignorés | {len(resultat.natifs)} |")
     if resultat.globaux:
         lignes.append(f"| Objets globaux SMC à remplacer ou supprimer | {len(resultat.globaux)} |")
+    if resultat.natifs_interfaces:
+        remplaces = sum(1 for item in resultat.natifs_interfaces if item.action != "revoir")
+        lignes.append(f"| Natifs remplacés (Network_, Firewall_) | {remplaces} |")
     lignes.append("")
     lignes.extend(_avertissements(inventaire))
     lignes.extend(["## Noms non conformes", ""])
@@ -208,6 +227,8 @@ def _markdown(resultat: Resultat) -> str:
             )
     if resultat.globaux:
         lignes.extend(_globaux(resultat))
+    if resultat.natifs_interfaces:
+        lignes.extend(_natifs_interfaces(resultat))
     if inventaire.ignores:
         lignes.extend(["", "## Objets ignorés", ""])
         for ignore in inventaire.ignores:
@@ -268,6 +289,48 @@ def _globaux(resultat: Resultat) -> list[str]:
             f"| {_cell(LIBELLE.get(item.sorte, item.sorte))} | {_cell(item.ancien)} | "
             f"{_cell(contenu)} | {_cell(_ACTIONS_GLOBAL[item.action])} | "
             f"{_cell(item.nouveau or '—')} | {_cell(item.commentaire or '')} |"
+        )
+    return lignes
+
+
+_ACTIONS_NATIF = {
+    "reutiliser": "réutiliser l'objet local",
+    "creer": "créer l'objet local",
+    "revoir": "à revoir (laissé natif)",
+}
+
+
+def _natifs_interfaces(resultat: Resultat) -> list[str]:
+    lignes = [
+        "",
+        "## Natifs remplacés",
+        "",
+        "Objets créés par le SNS pour chaque interface (Network_X : réseau de l'interface, "
+        "Firewall_X : adresse du firewall). Dans les règles de filtrage et les groupes locaux, "
+        "chacun est remplacé par un objet local de même contenu (lot 06-natifs) : réseau "
+        "{SITE}_NET_[V{VLAN}_]{INTERFACE}, hôte {SITE}_HST_FW_{INTERFACE}. Les natifs restent "
+        "en place, ni renommés ni supprimés ; le NAT et les routes continuent de les citer. "
+        "Network_internals reste natif.",
+        "",
+    ]
+    compte: dict[str, int] = {}
+    for item in resultat.natifs_interfaces:
+        compte[item.action] = compte.get(item.action, 0) + 1
+    lignes.append(
+        ", ".join(f"{_ACTIONS_NATIF[action]} : {nombre}" for action, nombre in sorted(compte.items())) + "."
+    )
+    lignes.extend(
+        [
+            "",
+            "| Natif | Interface | Contenu | Action | Objet local | Règles | Groupes | NAT et routes | Commentaire |",
+            "| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |",
+        ]
+    )
+    for item in resultat.natifs_interfaces:
+        lignes.append(
+            f"| {_cell(item.natif)} | {_cell(item.interface or '—')} | {_cell(item.contenu)} | "
+            f"{_cell(_ACTIONS_NATIF[item.action])} | {_cell(item.nouveau or '—')} | "
+            f"{len(item.references)} | {len(item.groupes)} | {len(item.nat)} | {_cell(item.commentaire or '')} |"
         )
     return lignes
 

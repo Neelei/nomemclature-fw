@@ -183,7 +183,7 @@ Un fichier absent sur le SNS fait échouer `tar` : le retirer de la liste et rel
 | `route` | `DefaultRoute=`, `[StaticRoutes]` (`[off ]DEST,IFACE->PASSERELLE`) | oui ; `[ReverseRoutes]` ignoré |
 | `Global/` | objets et politique globaux poussés par SMC : `object`, `objectgroup`, `servicegroup` (même format que les fichiers locaux), `Filter`… | `object`, `objectgroup`, `servicegroup` lus (voir [Objets globaux SMC](#objets-globaux-smc)) ; le reste reconnu, non géré |
 
-Dans une règle, `from`, `to`, `port`, `ipproto`, `route` et, après `->`, les champs traduits citent des objets (listes en `a|b`, négation `!a`, `user=login@objet` → `objet`). Les lignes `separator`, `on IFACE` (interface), `via ipsec`, `any`, `internet`, `none`, `original`, et les objets créés par le SNS (`Firewall_*`, `Network_*`, `ephemeral_fw*`) ne sont pas des objets de l'export. Une ligne `off` est une règle désactivée : elle compte comme référence. Le NAT ne compte que comme référence.
+Dans une règle, `from`, `to`, `port`, `ipproto`, `route` et, après `->`, les champs traduits citent des objets (listes en `a|b`, négation `!a`, `user=login@objet` → `objet`). Les lignes `separator`, `on IFACE` (interface), `via ipsec`, `any`, `internet`, `none`, `original`, et les objets créés par le SNS (`Firewall_*`, `Network_*`, `ephemeral_fw*`) ne sont pas des objets de l'export ; `Network_X` et `Firewall_X` sont remplacés dans les règles par le lot 06 (voir [Natifs d'interface](#natifs-dinterface-network_-firewall_)). Une ligne `off` est une règle désactivée : elle compte comme référence. Le NAT ne compte que comme référence.
 
 **Groupes requis pour les retraits.** Sans `objectgroup` ou `servicegroup`, un membre de groupe paraîtrait orphelin : les retraits sont suspendus (voir [Orphelins](#orphelins)).
 
@@ -224,9 +224,26 @@ Restent dans `ignores.txt`, sans suppression : les globaux à revoir ; ceux cit�
 1. Dans la SMC, copier les règles globales dans la politique locale du firewall (elles citent encore les objets globaux), déployer une dernière fois, puis détacher le firewall de la SMC.
 2. Refaire l'export du SNS, dossier `Global/` compris, dans `inbox/stormshield/`.
 3. `fwclean audit inbox/stormshield --sortie out/stormshield`, relire la section « Objets globaux SMC » du rapport (les `revoir` : compléter `reseaux.csv` ou traiter à la main).
-4. `fwclean script inbox/stormshield --plan out/stormshield/plan.json --sortie out/stormshield`, puis `01` → `02` → `03` → `04` → `05`, chacun en `--dry-run` d'abord.
+4. `fwclean script inbox/stormshield --plan out/stormshield/plan.json --sortie out/stormshield`, puis `01` → `02` → `03` → `04` → `05` (et `06` pour les natifs d'interface), chacun en `--dry-run` d'abord.
 5. Ne plus redéployer depuis la SMC : elle recréerait les objets globaux et écraserait la politique locale.
 6. Refaire l'export et l'audit : il ne doit plus rester d'objets globaux, sauf ceux de `ignores.txt` traités à la main.
+
+#### Natifs d'interface (Network_, Firewall_)
+
+Le SNS crée pour chaque interface un objet `Network_<interface>` (son réseau) et un objet `Firewall_<interface>` (son adresse). Ils ne figurent pas dans `object`, et leur contenu suit l'interface. Décision : dans les règles de filtrage et les groupes locaux, ils sont remplacés par des objets locaux conformes ; les natifs eux-mêmes ne sont ni renommés ni supprimés.
+
+- L'interface vient du fichier `network` (`Name=`, `Address=`, `Mask=`, VLAN compris) : `Network_X` prend son réseau, `Firewall_X` son adresse en `/32`.
+- Le site, le VLAN et l'interface du nom viennent de `reseaux.csv`, jamais inventés : `Network_VLAN_99` (`10.210.99.0/24`) devient `G2_NET_V99_VLAN-99` ; `Firewall_VLAN_99` devient `G2_HST_FW_VLAN-99`, avec le site et l'interface du réseau qui contient `10.210.99.252`.
+- Un objet local de même contenu (après renommages, fusions et lot 04) est réutilisé ; sinon l'objet est créé.
+- `Network_internals` (toutes les interfaces protégées) reste natif. `Firewall_all` n'a pas d'équivalent local.
+- À revoir, laissé natif (`ignores.txt`) : interface en DHCP ou sans adresse statique, interface introuvable, réseau de l'interface absent de `reseaux.csv` (ou seulement couvert par un réseau plus large), adresse du firewall hors de `reseaux.csv`.
+- Le NAT et les routes continuent de citer le natif : chaque natif remplacé qui y figure encore a une ligne dans `ignores.txt`, avec l'objet local à utiliser si l'on veut le changer à la main.
+
+Le rapport les liste dans « Natifs remplacés » ; le plan, dans `natifs_interfaces` (natif, interface, contenu, action `reutiliser`, `creer` ou `revoir`, objet local, règles, groupes, NAT et routes).
+
+**Lot 06.** `fwclean script` écrit `06-natifs.py` et `06-natifs.cli.txt`, à passer après le lot 05 : `MODIFY ON`, création des objets manquants (`CONFIG OBJECT NETWORK NEW name= ip= mask=`, `CONFIG OBJECT HOST NEW name= ip= resolve=static`, commentaire `remplace Network_X (natif SNS)`), `ADDTO`/`REMOVEFROM` dans les groupes locaux, `CONFIG FILTER RULE UPDATE` sur les seules règles qui citent le natif, puis `CONFIG OBJECT ACTIVATE` et `CONFIG FILTER ACTIVATE`. Aucun `DELETE`.
+
+Point d'attention : un natif suit l'interface. Après le lot 06, si l'adresse ou le masque d'une interface change, l'objet local cité par la règle est à mettre à jour à la main.
 
 #### Objets natifs SNS
 

@@ -376,7 +376,9 @@ def test_version_cli_a_coller(tmp_path, referentiel):
     inventaire = charger([_export_slot_05(tmp_path)])
     plan = plan_dict(auditer(inventaire, referentiel))
     script = generer_script_sns(inventaire, plan, lot=2)
-    assert set(script.cli) == {"01-renommages", "02-fusions", "03-retraits", "04-globaux", "05-suppression-globaux"}
+    assert set(script.cli) == {
+        "01-renommages", "02-fusions", "03-retraits", "04-globaux", "05-suppression-globaux", "06-natifs"
+    }
     for nom, texte in script.cli.items():
         lignes = texte.splitlines()
         assert lignes[:2] == ["MODIFY ON", ""]
@@ -398,3 +400,69 @@ def test_cli_sns_ecrit_les_fichiers_cli(tmp_path, racine):
     assert executer(["script", str(dossier), "--plan", str(sortie / "plan.json"), "--sortie", str(sortie / "sns")]) == 0
     noms = {chemin.name for chemin in (sortie / "sns").iterdir()}
     assert {f"{n}.cli.txt" for n in ("01-renommages", "02-fusions", "03-retraits", "04-globaux", "05-suppression-globaux")} <= noms
+
+
+def test_lot_natifs(tmp_path, referentiel):
+    from fwclean.audit import auditer
+    from fwclean.report import plan_dict
+
+    inventaire = charger([_export_slot_05(tmp_path)])
+    plan = plan_dict(auditer(inventaire, referentiel))
+    script = generer_script_sns(inventaire, plan)
+    lot = script.natifs
+    assert (
+        'CONFIG OBJECT HOST NEW name=SIEGE_HST_FW_LAN-USERS ip=10.0.0.254 resolve=static '
+        'comment=\\"remplace Firewall_LAN (natif SNS)\\"' in lot
+    )
+    assert "CONFIG OBJECT HOST NEW name=SIEGE_HST_FW_WAN ip=203.0.113.2 resolve=static" in lot
+    # r8 (position 12) : Network_LAN réutilise le réseau conservé, Firewall_LAN l'hôte créé.
+    assert "position=12 srctarget=SIEGE_NET_V10_LAN-USERS output=xml" in lot
+    assert "position=12 dsttarget=SIEGE_HST_FW_LAN-USERS output=xml" in lot
+    # r9 : Network_internals reste ; Firewall_in (DHCP) reste, Firewall_out remplacé.
+    assert "position=13 dsttarget=Firewall_in,SIEGE_HST_FW_WAN output=xml" in lot
+    assert "Network_internals" not in lot and "NETWORK NEW" not in lot
+    assert "DELETE name=" not in lot and "DELETE" not in script.cli["06-natifs"]
+    assert any("natif Firewall_in : laissé natif" in i and "DHCP" in i for i in script.ignores)
+    assert any("natif Firewall_out : encore cité par 1 NAT" in i for i in script.ignores)
+    assert script.compteurs["natifs_crees"] == 2 and script.compteurs["natifs_reutilises"] == 1
+    lignes = script.cli["06-natifs"].splitlines()
+    assert lignes[:2] == ["MODIFY ON", ""] and lignes[-2:] == ["CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE"]
+    ns: dict = {}
+    exec(lot, ns)
+    assert ns["main"](["--dry-run"]) == 0
+
+
+def test_lot_natifs_reecrit_les_groupes_locaux_seulement():
+    from fwclean.model import Objet
+    from fwclean.script_sns import _Etat, _natifs
+
+    local = Objet(sorte="groupe-adresses", nom="GRP_L", empreinte=(), detail="", mentions_adresses=("Network_LAN",))
+    globale = Objet(
+        sorte="groupe-adresses", nom="global_G", empreinte=(), detail="", mentions_adresses=("Network_LAN",), globale=True
+    )
+    etat = _Etat(
+        objets={("adresse", "GRP_L"): local, ("adresse", "global_G"): globale},
+        groupes={("adresse", "GRP_L"): ["Network_LAN"], ("adresse", "global_G"): ["Network_LAN"]},
+        regles=[],
+        cites_route_nat=set(),
+    )
+    item = {"natif": "Network_LAN", "sorte": "reseau", "action": "creer", "nouveau": "S_NET_LAN", "contenu": "10.0.0.0/24"}
+    commandes, _compteurs = _natifs(etat, [item], lambda _e, nom: nom, [])
+    textes = [c for c, _o in commandes]
+    assert textes[0].startswith("CONFIG OBJECT NETWORK NEW name=S_NET_LAN ip=10.0.0.0 mask=255.255.255.0")
+    assert "CONFIG OBJECT GROUP ADDTO group=GRP_L node=S_NET_LAN" in textes
+    assert "CONFIG OBJECT GROUP REMOVEFROM group=GRP_L node=Network_LAN" in textes
+    assert not any("global_G" in texte for texte in textes)
+
+
+def test_cli_sns_ecrit_lot_natifs(tmp_path, racine):
+    sortie = tmp_path / "out"
+    dossier = _export_slot_05(tmp_path)
+    assert executer(
+        ["audit", str(dossier), "--sortie", str(sortie), "--reseaux", str(racine / "reseaux.exemple.csv")]
+    ) == 0
+    assert executer(
+        ["script", str(dossier), "--plan", str(sortie / "plan.json"), "--sortie", str(sortie / "sns")]
+    ) == 0
+    assert "HST_FW_LAN-USERS" in (sortie / "sns" / "06-natifs.py").read_text(encoding="utf-8")
+    assert (sortie / "sns" / "06-natifs.cli.txt").is_file()

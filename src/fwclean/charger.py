@@ -110,6 +110,7 @@ def _fusionner(constructeur: str, inventaires: list[Inventaire]) -> Inventaire:
         regles=tuple(regle for inv in inventaires for regle in inv.regles),
         liens=tuple(lien for inv in inventaires for lien in inv.liens),
         ignores=tuple(ignore for inv in inventaires for ignore in inv.ignores),
+        interfaces=tuple(interface for inv in inventaires for interface in inv.interfaces),
     )
 
 

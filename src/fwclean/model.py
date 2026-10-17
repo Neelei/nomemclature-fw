@@ -63,6 +63,16 @@ class Lien:
 
 
 @dataclass(frozen=True)
+class Interface:
+    """Interface SNS (fichier network) : nom, adresse IPv4 statique principale, ou DHCP."""
+
+    nom: str
+    adresse: str | None = None
+    prefixe: int | None = None
+    dhcp: bool = False
+
+
+@dataclass(frozen=True)
 class Inventaire:
     constructeur: str
     sources: tuple[str, ...]
@@ -75,6 +85,7 @@ class Inventaire:
     non_definis: tuple[str, ...] = ()
     # Raison pour laquelle aucun retrait d'orphelin n'est proposé (export incomplet).
     retraits_suspendus: str | None = None
+    interfaces: tuple[Interface, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -117,6 +128,25 @@ class RemplacementGlobal:
 
 
 @dataclass(frozen=True)
+class RemplacementNatif:
+    """Natif d'interface SNS (Network_X, Firewall_X) remplacé dans les règles par un objet local.
+
+    `sorte` : sorte de l'objet local (« reseau » ou « hote ») ; le natif n'est jamais supprimé.
+    """
+
+    natif: str
+    sorte: str
+    interface: str | None
+    action: str
+    nouveau: str | None
+    contenu: str
+    references: tuple[str, ...] = ()
+    groupes: tuple[str, ...] = ()
+    nat: tuple[str, ...] = ()
+    commentaire: str | None = None
+
+
+@dataclass(frozen=True)
 class NonConforme:
     sorte: str
     nom: str
@@ -136,3 +166,4 @@ class Resultat:
     # Objets de la base par défaut SNS, laissés tels quels.
     natifs: tuple[Objet, ...] = ()
     globaux: tuple[RemplacementGlobal, ...] = ()
+    natifs_interfaces: tuple[RemplacementNatif, ...] = ()

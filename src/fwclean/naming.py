@@ -59,6 +59,9 @@ PREFIXE = {
     "calendrier": "SCH",
 }
 
+# Adresse du firewall sur une interface : {SITE}_HST_FW_{INTERFACE} (le détail précède l'interface).
+DETAIL_FW = "FW"
+
 # Anciens préfixes retirés du détail lors d'un renommage (SGRP_WEB → SG_WEB).
 ANCIENS_PREFIXES = {
     "SG": ("SGRP",),
@@ -218,7 +221,10 @@ def est_conforme_objet(
     minuscules = [partie.lower() for partie in parties]
     if attendu is not None and CTX not in (attendu.site, attendu.interface):
         if sorte != "reseau":
-            return len(parties) == 4 and minuscules[:3] == [attendu.site, prefixe.lower(), attendu.interface]
+            return len(parties) == 4 and (
+                minuscules[:3] == [attendu.site, prefixe.lower(), attendu.interface]
+                or _forme_fw(sorte, minuscules, {attendu.interface}, attendu.site)
+            )
         corps = segments_reseau(attendu)
         dernier = minuscules[-1]
         return (
@@ -231,12 +237,29 @@ def est_conforme_objet(
         )
     connues = {interface.lower() for interface in interfaces} | {MULTI}
     if sorte != "reseau":
-        return len(parties) == 4 and minuscules[2] in connues
+        return len(parties) == 4 and (minuscules[2] in connues or _forme_fw(sorte, minuscules, connues))
     *milieu, dernier = minuscules[2:]
     # Milieu : éventuellement un seul segment VLAN (v\d+) ; plus de zone.
     if len(milieu) > 1 or (milieu and not _SEGMENT_VLAN.fullmatch(milieu[0])):
         return False
     return any(dernier == interface or dernier.startswith(f"{interface}-") for interface in connues)
+
+
+def _forme_fw(sorte: str, minuscules: list[str], interfaces: Collection[str], site: str | None = None) -> bool:
+    """Hôte {SITE}_HST_FW_{INTERFACE} : adresse du firewall sur l'interface."""
+    return (
+        sorte == "hote"
+        and len(minuscules) == 4
+        and minuscules[1:3] == [PREFIXE["hote"].lower(), DETAIL_FW.lower()]
+        and minuscules[3] in interfaces
+        and (site is None or minuscules[0] == site)
+    )
+
+
+def proposer_hote_fw(localisation: Localisation, limite: int = LONGUEUR_MAX) -> str:
+    """{SITE}_HST_FW_{INTERFACE} : hôte qui remplace le natif Firewall_<interface>."""
+    parties = [localisation.site, PREFIXE["hote"], DETAIL_FW, localisation.interface]
+    return tronquer(SEP.join(parties).upper(), limite)
 
 
 def _sequence(jetons: list[str], cherches: list[str]) -> int | None:

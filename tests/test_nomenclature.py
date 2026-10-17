@@ -236,3 +236,14 @@ def test_troncature_coupe_le_detail_jamais_l_interface():
     base = "HQ_NET_V25_CENTRALE-DETECTION-GAZ-ABC"
     unique = rendre_unique(base, {base}, len(base), len(interface))
     assert unique == "HQ_NET_V25_CENTRALE-DETECTION-GAZ-01"
+
+
+def test_forme_hote_du_firewall():
+    from fwclean.naming import Localisation, est_conforme_objet, proposer_hote_fw
+
+    attendu = Localisation("g2", "vlan-99")
+    assert proposer_hote_fw(attendu) == "G2_HST_FW_VLAN-99"
+    assert est_conforme_objet("G2_HST_FW_VLAN-99", "hote", ["g2"], 79, None, ["vlan-99"], attendu)
+    assert est_conforme_objet("G2_HST_FW_VLAN-99", "hote", ["g2"], 79, None, ["vlan-99"])
+    assert not est_conforme_objet("G2_HST_FW_VLAN-98", "hote", ["g2"], 79, None, ["vlan-99"], attendu)
+    assert not est_conforme_objet("G2_NET_FW_VLAN-99", "reseau", ["g2"], 79, None, ["vlan-99"], attendu)

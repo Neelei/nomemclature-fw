@@ -323,6 +323,7 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
     cmds_globaux, cmds_suppr_globaux, compteurs_globaux = _globaux(
         etat, plan.get("globaux", []), courant, ignores
     )
+    cmds_natifs, compteurs_natifs = _natifs(etat, plan.get("natifs_interfaces", []), courant, ignores)
 
     cli = {
         "01-renommages": _rendre_cli(cmds_renom, lot),
@@ -330,6 +331,7 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
         "03-retraits": _rendre_cli(cmds_retrait, lot),
         "04-globaux": _rendre_cli(cmds_globaux, lot),
         "05-suppression-globaux": _rendre_cli(cmds_suppr_globaux, lot),
+        "06-natifs": _rendre_cli(cmds_natifs, lot),
     }
     return Script(
         cli=cli,
@@ -346,7 +348,9 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
             "commandes_retraits": len(cmds_retrait),
             "commandes_globaux": len(cmds_globaux),
             "commandes_suppression_globaux": len(cmds_suppr_globaux),
+            "commandes_natifs": len(cmds_natifs),
             **compteurs_globaux,
+            **compteurs_natifs,
         },
         globaux=_rendre_script(
             "04 — Remplacement des objets globaux SMC par des objets locaux",
@@ -356,6 +360,11 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
         suppression_globaux=_rendre_script(
             "05 — Suppression des objets globaux SMC remplacés (CONFIG GLOBAL OBJECT … DELETE)",
             cmds_suppr_globaux,
+            lot,
+        ),
+        natifs=_rendre_script(
+            "06 — Natifs d'interface (Network_X, Firewall_X) remplacés dans les règles, sans suppression",
+            cmds_natifs,
             lot,
         ),
     )
@@ -467,11 +476,11 @@ def _globaux(
 
 
 def _commandes_new(
-    objet: Objet, nom: str, membres: list[str], ancien: str
+    objet: Objet, nom: str, membres: list[str], ancien: str, provenance: str = "SMC"
 ) -> list[tuple[str, str]] | None:
     """Commandes CONFIG OBJECT … NEW d'un objet local (guide CLI serverd v5)."""
     origine = f"création {nom} (remplace {ancien})"
-    commentaire = f"comment={_q('remplace ' + ancien + ' (SMC)')}"
+    commentaire = f"comment={_q('remplace ' + ancien + ' (' + provenance + ')')}"
     nom_q = _q(nom)
     sorte = objet.sorte
     if sorte == "hote":
@@ -527,6 +536,66 @@ def _commandes_new(
     else:
         return None
     return [(commande, origine)]
+
+
+def _natifs(
+    etat: _Etat,
+    items: list[dict],
+    courant: Callable[[str, str], str | None],
+    ignores: list[str],
+) -> tuple[list[tuple[str, str]], dict[str, int]]:
+    """Lot 06 : objet local à la place de Network_X / Firewall_X dans les règles de filtrage et
+    les groupes locaux. Aucun DELETE : le natif reste, le NAT et les routes le citent encore."""
+    commandes: list[tuple[str, str]] = []
+    espace = "adresse"
+    crees = reutilises = 0
+    for item in items:
+        natif, action = item["natif"], item.get("action")
+        if action not in {"reutiliser", "creer"}:
+            ignores.append(f"natif {natif} : laissé natif, à revoir — {item.get('commentaire') or 'sans remplaçant'}")
+            continue
+        nouveau = item["nouveau"]
+        if action == "reutiliser":
+            local = courant(espace, nouveau)
+            if local is None or (espace, local) not in etat.objets:
+                ignores.append(f"natif {natif} : objet local {nouveau} absent après les lots 01 à 05")
+                continue
+            reutilises += 1
+        else:
+            if (espace, nouveau) in etat.objets:
+                ignores.append(f"natif {natif} : {nouveau} existe déjà, à reprendre à la main")
+                continue
+            objet = _objet_natif(item)
+            creation = _commandes_new(objet, nouveau, [], natif, "natif SNS")
+            if creation is None:
+                ignores.append(f"natif {natif} : création de {nouveau} non gérée ({item.get('contenu')})")
+                continue
+            commandes.extend(creation)
+            etat.objets[(espace, nouveau)] = replace(objet, nom=nouveau)
+            local = nouveau
+            crees += 1
+        origine = f"{natif} -> {local}"
+        globaux = {cle for cle, objet in etat.objets.items() if objet.globale}
+        commandes.extend(_reecrire_groupes(etat, espace, natif, local, origine, globaux))
+        commandes.extend(_reecrire_regles(etat, espace, natif, local, origine))
+        if item.get("nat"):
+            nat = item["nat"]
+            exemples = ", ".join(nat[:3]) + (" …" if len(nat) > 3 else "")
+            ignores.append(
+                f"natif {natif} : encore cité par {len(nat)} NAT ou route ({exemples}), laissé natif "
+                f"(remplacer par {local} à la main si souhaité)"
+            )
+    return commandes, {"natifs_crees": crees, "natifs_reutilises": reutilises}
+
+
+def _objet_natif(item: dict) -> Objet:
+    """Objet local (réseau ou hôte IPv4) au contenu du natif, d'après le plan."""
+    if item["sorte"] == "reseau":
+        reseau = ipaddress.ip_network(item["contenu"], strict=False)
+        empreinte = (("v4", str(reseau.network_address), reseau.prefixlen),)
+    else:
+        empreinte = (("v4", str(ipaddress.ip_address(item["contenu"])), 32),)
+    return Objet(sorte=item["sorte"], nom=item["natif"], empreinte=empreinte, detail=item["contenu"])
 
 
 def _cite_ipproto(etat: _Etat, espace: str, nom: str) -> bool:

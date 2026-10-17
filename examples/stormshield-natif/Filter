@@ -15,3 +15,5 @@ reset from any to global_SRV_PROXY port mail rulename "r7"  # objet global SMC e
 separator color="c0c0c0" comment="Règles copiées de la politique globale SMC" collapse="0"
 pass from Global_GRP_IMBRIQUE to global_SRV_WEB port Global_WEB_APPLI rulename "g1"
 pass from Res-VLAN10 to global_GRP_A_REVOIR port global_http_appli rulename "g2"
+pass from Network_LAN to Firewall_LAN port SVC_TCP_443_HTTPS rulename "r8"  # natifs d'interface : VLAN LAN et adresse du firewall
+pass from Network_internals to Firewall_in|Firewall_out port SVC_TCP_443_HTTPS rulename "r9"  # Network_internals reste natif ; in est en DHCP

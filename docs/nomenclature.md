@@ -9,11 +9,14 @@ Le troisième segment des objets d'adresse est l'**interface** du réseau qui co
 | Objets | Forme | Exemple |
 | --- | --- | --- |
 | hôtes, plages, FQDN, groupes d'adresses, VIP, pools | `{SITE}_{PREFIXE}_{INTERFACE}_{DETAIL}` | `HQ_HST_CABINES_PC01` |
+| adresse du firewall sur une interface (hôte) | `{SITE}_HST_FW_{INTERFACE}` | `G2_HST_FW_VLAN-99` |
 | réseau | `{SITE}_NET_[V{VLAN}_]{INTERFACE}` | `HQ_NET_V16_CABINES`, `HQ_NET_CABINES` |
 | services | `SVC_{PROTOCOLE}_{PORTS}_{LIBELLE}` | `SVC_TCP_443_HTTPS`, `SVC_ANY_53_DNS` |
 | groupes de services, calendriers | `{PREFIXE}_{DETAIL}` | `SG_ACTIVE-DIRECTORY`, `SCH_BUREAU` |
 
 Services, groupes de services et calendriers n'ont ni site ni interface ; leur forme ne change pas.
+
+L'hôte `{SITE}_HST_FW_{INTERFACE}` remplace dans les règles le natif SNS `Firewall_<interface>` : le détail `FW` précède l'interface, qui reste le dernier segment. Il est conforme quand son site et son interface sont ceux du réseau de `reseaux.csv` qui contient l'adresse. Le natif `Network_<interface>` est remplacé par l'objet réseau `{SITE}_NET_[V{VLAN}_]{INTERFACE}` du réseau de l'interface. `Network_internals` reste natif.
 
 - majuscules uniquement (`A-Z`, `0-9`) ;
 - les segments sont séparés par un underscore `_` ;

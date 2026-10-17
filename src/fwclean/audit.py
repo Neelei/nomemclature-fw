@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+import re
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 
@@ -12,6 +14,7 @@ from fwclean.model import (
     NonConforme,
     Objet,
     RemplacementGlobal,
+    RemplacementNatif,
     Renommage,
     Resultat,
     Retrait,
@@ -27,6 +30,7 @@ from fwclean.naming import (
     est_conforme_objet,
     forme_valide,
     longueur_max,
+    proposer_hote_fw,
     proposer_objet,
     proposer_service,
     rendre_unique,
@@ -254,6 +258,30 @@ def auditer(
         nommer,
         origines,
     )
+    def reserver(base: str) -> str:
+        nouveau = rendre_unique(base, prises, limite("hote"))
+        prises.add(nouveau)
+        return nouveau
+
+    natifs_interfaces = (
+        _remplacer_natifs(
+            inventaire,
+            [
+                objet
+                for objet in inventaire.objets
+                if not objet.globale
+                and (objet.sorte, objet.nom) not in supprimes
+                and (objet.sorte, objet.nom) not in orphelin_ids
+            ],
+            nom_final,
+            globaux,
+            localisateur,
+            nommer,
+            reserver,
+        )
+        if inventaire.constructeur == "stormshield"
+        else ()
+    )
     non_conformes = _non_conformes(
         inventaire,
         lambda objet: objet.globale or natif(objet) or conforme(objet),
@@ -271,6 +299,7 @@ def auditer(
         referentiel=referentiel.decrire(),
         natifs=tuple(sorted(natifs, key=lambda objet: (objet.sorte, objet.nom))),
         globaux=globaux,
+        natifs_interfaces=natifs_interfaces,
     )
 
 
@@ -467,6 +496,136 @@ def _groupe_global(
     return RemplacementGlobal(
         action="creer", nouveau=nommer(objet, base, localisation), membres=membres, **commun
     )
+
+
+# Natifs d'interface SNS : Network_<interface> (réseau) et Firewall_<interface> (adresse du firewall).
+_NATIF_INTERFACE = re.compile(r"(network|firewall)_(.+)", re.IGNORECASE)
+# Network_internals (toutes les interfaces protégées) reste natif : décision.
+NATIFS_GARDES = frozenset({"network_internals"})
+
+
+def _remplacer_natifs(
+    inventaire: Inventaire,
+    locaux: Sequence[Objet],
+    nom_final: Callable[[Objet], str],
+    globaux: Sequence[RemplacementGlobal],
+    localisateur: Localisateur,
+    nommer: Callable[[Objet, str, Localisation | None], str],
+    reserver: Callable[[str], str],
+) -> tuple[RemplacementNatif, ...]:
+    """Objet local qui remplace, dans les règles de filtrage et les groupes locaux, chaque
+    Network_X / Firewall_X cité.
+
+    Le réseau ou l'adresse vient de l'interface X du fichier network ; le site, le VLAN et
+    l'interface de reseaux.csv. Un objet local identique (après renommages, fusions et lot des
+    globaux) est réutilisé ; sinon il est créé. Le natif n'est ni renommé ni supprimé.
+    """
+    regles: dict[str, set[str]] = defaultdict(set)
+    groupes: dict[str, set[str]] = defaultdict(set)
+    autres: dict[str, set[str]] = defaultdict(set)
+
+    def natif(nom: str) -> bool:
+        return bool(_NATIF_INTERFACE.fullmatch(nom)) and nom.lower() not in NATIFS_GARDES
+
+    for regle in inventaire.regles:
+        for nom in regle.sources + regle.destinations:
+            if natif(nom):
+                regles[nom].add(regle.nom)
+    for objet in locaux:
+        if objet.sorte == "groupe-adresses":
+            for nom in objet.mentions_adresses:
+                if natif(nom):
+                    groupes[nom].add(objet.nom)
+    for lien in inventaire.liens:
+        for nom in lien.adresses:
+            if natif(nom):
+                autres[nom].add(lien.origine)
+    if not regles and not groupes:
+        return ()
+
+    finaux: dict[tuple[str, tuple], list[str]] = defaultdict(list)
+    for objet in locaux:
+        if objet.sorte in {"hote", "reseau"}:
+            finaux[(objet.sorte, objet.empreinte)].append(nom_final(objet))
+    par_nom = {objet.nom: objet for objet in inventaire.objets if objet.globale}
+    for item in globaux:
+        objet = par_nom.get(item.ancien)
+        if item.action == "creer" and item.nouveau and objet is not None and objet.sorte in {"hote", "reseau"}:
+            finaux[(objet.sorte, objet.empreinte)].append(item.nouveau)
+    interfaces = {interface.nom: interface for interface in inventaire.interfaces}
+    sans_casse = {interface.nom.lower(): interface for interface in inventaire.interfaces}
+
+    resultats: list[RemplacementNatif] = []
+    for nom in sorted(set(regles) | set(groupes), key=lambda nom: (nom.lower(), nom)):
+        genre, cle = _NATIF_INTERFACE.fullmatch(nom).groups()
+        sorte = "reseau" if genre.lower() == "network" else "hote"
+        commun = {
+            "natif": nom,
+            "sorte": sorte,
+            "references": tuple(sorted(regles.get(nom, ()))),
+            "groupes": tuple(sorted(groupes.get(nom, ()))),
+            "nat": tuple(sorted(autres.get(nom, ()))),
+        }
+        interface = interfaces.get(cle) or sans_casse.get(cle.lower())
+
+        def revoir(commentaire: str, contenu: str = "—") -> RemplacementNatif:
+            return RemplacementNatif(
+                interface=interface.nom if interface else None,
+                action="revoir",
+                nouveau=None,
+                contenu=contenu,
+                commentaire=commentaire,
+                **commun,
+            )
+
+        if interface is None and cle.lower() == "all":
+            resultats.append(revoir("toutes les adresses du firewall : aucun objet local équivalent"))
+            continue
+        if interface is None:
+            resultats.append(revoir(f"interface {cle} introuvable dans le fichier network"))
+            continue
+        if interface.dhcp:
+            resultats.append(revoir("interface en DHCP : adresse inconnue"))
+            continue
+        if interface.adresse is None or interface.prefixe is None:
+            resultats.append(revoir("interface sans adresse IPv4 statique"))
+            continue
+        if sorte == "reseau":
+            reseau = ipaddress.ip_network(f"{interface.adresse}/{interface.prefixe}", strict=False)
+            contenu = str(reseau)
+            empreinte = (("v4", str(reseau.network_address), reseau.prefixlen),)
+        else:
+            contenu = interface.adresse
+            empreinte = (("v4", interface.adresse, 32),)
+        objet = Objet(sorte=sorte, nom=nom, empreinte=empreinte, detail=contenu)
+        if finaux.get((sorte, empreinte)):
+            resultats.append(
+                RemplacementNatif(
+                    interface=interface.nom,
+                    action="reutiliser",
+                    nouveau=min(finaux[(sorte, empreinte)]),
+                    contenu=contenu,
+                    **commun,
+                )
+            )
+            continue
+        localisation = localisateur.objet(objet)
+        commentaire = _commentaire(sorte, localisation)
+        if commentaire is None and sorte == "reseau" and not localisation.exact:
+            commentaire = "réseau de l'interface absent de reseaux.csv (seul un réseau plus large y figure)"
+        if commentaire is None and sorte == "reseau" and reseau.prefixlen == 32:
+            commentaire = "réseau /32 : CONFIG OBJECT NETWORK NEW le refuse"
+        if commentaire:
+            resultats.append(revoir(commentaire, contenu))
+            continue
+        nouveau = nommer(objet, nom, localisation) if sorte == "reseau" else reserver(proposer_hote_fw(localisation))
+        finaux[(sorte, empreinte)].append(nouveau)
+        resultats.append(
+            RemplacementNatif(
+                interface=interface.nom, action="creer", nouveau=nouveau, contenu=contenu, **commun
+            )
+        )
+    return tuple(resultats)
 
 
 def _index_references(inventaire: Inventaire) -> dict[tuple[str, str], set[str]]:
