@@ -15,6 +15,7 @@ from fwclean.stormshield import (
     lire_routes,
 )
 from fwclean.stormshield_natif import FICHIERS as FICHIERS_NATIFS
+from fwclean.stormshield_natif import FICHIERS_GLOBAUX
 from fwclean.stormshield_natif import assembler_natif, genre_natif
 
 _SUFFIXES = {".conf", ".csv", ".na"}
@@ -137,7 +138,7 @@ def _verifier(inventaire: Inventaire) -> Inventaire:
 
 
 def _developper(chemins: list[Path]) -> tuple[list[Path], list[str]]:
-    """Fichiers à lire, et éléments SNS reconnus mais pas lus (dossier global/)."""
+    """Fichiers à lire, et éléments SNS reconnus mais pas lus (reste du dossier Global/)."""
     fichiers: list[Path] = []
     non_lus: list[str] = []
     for chemin in chemins:
@@ -153,13 +154,23 @@ def _developper(chemins: list[Path]) -> tuple[list[Path], list[str]]:
             elif enfant.is_dir() and nom == "filter":
                 fichiers.extend(slot for slot in sorted(enfant.iterdir()) if slot.is_file())
             elif enfant.is_dir() and nom == "global":
-                non_lus.append(f"{_afficher(enfant)}/ (objets globaux SMC)")
+                for fichier in sorted(enfant.iterdir()):
+                    if fichier.is_file() and fichier.name.lower() in FICHIERS_GLOBAUX:
+                        fichiers.append(fichier)
+                    else:
+                        non_lus.append(_afficher(fichier) + ("/" if fichier.is_dir() else ""))
     return fichiers, non_lus
 
 
 def _genre(chemin: Path, texte: str) -> str:
     if chemin.suffix.lower() == ".conf":
         return "fortigate"
+    if (
+        not chemin.suffix
+        and chemin.parent.name.lower() == "global"
+        and chemin.name.lower() in FICHIERS_GLOBAUX
+    ):
+        return f"{_NATIF}global-{chemin.name.lower()}"
     if not chemin.suffix:
         natif = genre_natif(chemin.name, texte)
         if natif is None and chemin.parent.name.lower() == "filter":

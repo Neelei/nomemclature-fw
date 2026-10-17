@@ -1,7 +1,8 @@
 """Lecture des fichiers de configuration natifs d'un SNS (/usr/Firewall/ConfigFiles).
 
 Fichiers lus : object, objectgroup, servicegroup, Filter (ou les slots du dossier Filter/),
-Network, route. Reconnus mais pas lus (non gérés) : router, dossier global/.
+Network, route, et Global/object, Global/objectgroup, Global/servicegroup (objets globaux SMC,
+nommés « global_<nom> »). Reconnus mais pas lus (non gérés) : router, reste du dossier Global/.
 Format INI : sections [Host], [Network], [Service]…, une ligne « nom=valeur  # commentaire »
 par objet ; une section par groupe avec un membre par ligne ; une règle par ligne.
 """
@@ -28,9 +29,13 @@ Reseau = ipaddress.IPv4Network | ipaddress.IPv6Network
 LUS = ("object", "objectgroup", "servicegroup", "filter", "network", "route")
 NON_LUS = ("router",)
 FICHIERS = LUS + NON_LUS
+# Fichiers lus dans le dossier Global/ (mêmes noms et format que les fichiers locaux).
+FICHIERS_GLOBAUX = ("object", "objectgroup", "servicegroup")
+# Les règles locales citent un objet global par « global_<nom> » ou « Global_<nom> ».
+PREFIXE_GLOBAL = "global_"
 
-# Sans ces fichiers, un membre de groupe paraîtrait orphelin. Routeurs et objets globaux SMC
-# ne sont pas gérés (décision) : ils font l'objet d'un avertissement, pas d'une suspension.
+# Sans ces fichiers, un membre de groupe paraîtrait orphelin. Les routeurs ne sont pas gérés
+# (décision) : ils font l'objet d'un avertissement, pas d'une suspension.
 REQUIS_POUR_RETRAITS = ("objectgroup", "servicegroup")
 _RISQUES = {
     "objectgroup": "un membre de groupe d'adresses",
@@ -40,6 +45,10 @@ _RISQUES = {
 AVERTISSEMENT_NON_GERES = (
     "Objets globaux SMC (global_*, Global_*) et objets routeur non lus : un hôte qui ne sert "
     "que de passerelle dans un objet routeur, ou qui n'est cité que par des objets globaux, "
+    "peut apparaître à tort comme orphelin. À vérifier avant suppression."
+)
+AVERTISSEMENT_ROUTEURS = (
+    "Objets routeur non lus : un hôte qui ne sert que de passerelle dans un objet routeur "
     "peut apparaître à tort comme orphelin. À vérifier avant suppression."
 )
 VERIFIER_USAGE = (
@@ -56,7 +65,7 @@ _PREFIXES_IMPLICITES = ("firewall_", "network_", "ephemeral_fw")
 # Mots-clés d'une règle suivis d'une liste d'objets (séparés par « | »).
 _CHAMPS_REGLE = {"from", "to", "port", "route", "ipproto", "on", "via"}
 
-_FIGE_DYNAMIQUE = "nom DNS résolu par le SNS (resolve=dynamic) : le renommer casserait la résolution"
+FIGE_DYNAMIQUE = "nom DNS résolu par le SNS (resolve=dynamic) : le renommer casserait la résolution"
 _FIGE_FQDN = "objet FQDN SNS : le nom est le nom DNS résolu, le renommer casserait la résolution"
 
 
@@ -105,6 +114,14 @@ def assembler_natif(
             objets.extend(lire_groupes_natifs(texte, "groupe-adresses"))
         elif genre == "servicegroup":
             objets.extend(lire_groupes_natifs(texte, "groupe-services"))
+        elif genre == "global-object":
+            lus_objets, lus_ignores = lire_objets_natifs(texte)
+            objets.extend(_globaliser(objet) for objet in lus_objets)
+            ignores.extend(f"{PREFIXE_GLOBAL}{ignore}" for ignore in lus_ignores)
+        elif genre == "global-objectgroup":
+            objets.extend(_globaliser(groupe) for groupe in lire_groupes_natifs(texte, "groupe-adresses"))
+        elif genre == "global-servicegroup":
+            objets.extend(_globaliser(groupe) for groupe in lire_groupes_natifs(texte, "groupe-services"))
         elif genre == "filter":
             slot = label.rsplit("/", 1)[-1]
             prefixe = f"{slot}:" if len(filtres) > 1 else ""
@@ -125,6 +142,9 @@ def assembler_natif(
         lus.add(genre)
 
     objets = [_avec_vlan(objet, vlans) for objet in objets]
+    globaux_lus = any(objet.globale for objet in objets)
+    if globaux_lus:
+        objets, regles, liens = _canoniser_globaux(objets, regles, liens)
     non_definis = noms_non_definis(objets, regles, liens)
     manquants = [nom for nom in REQUIS_POUR_RETRAITS if nom not in lus]
     avertissements: list[str] = []
@@ -137,7 +157,7 @@ def assembler_natif(
     elif "filter" not in lus:
         suspension = "aucun fichier Filter lu : aucune règle ne cite les objets"
         avertissements.append(f"Retraits d'orphelins suspendus : {suspension}.")
-    avertissements.append(AVERTISSEMENT_NON_GERES)
+    avertissements.append(AVERTISSEMENT_ROUTEURS if globaux_lus else AVERTISSEMENT_NON_GERES)
     if suspension is None:
         avertissements.append(VERIFIER_USAGE)
     if fournis_non_lus:
@@ -161,6 +181,105 @@ def assembler_natif(
         avertissements=tuple(avertissements),
         non_definis=non_definis,
         retraits_suspendus=suspension,
+    )
+
+
+def _global(nom: str) -> str:
+    """Nom canonique d'un objet global : « global_ » + nom sans préfixe."""
+    if nom.lower().startswith(PREFIXE_GLOBAL):
+        nom = nom[len(PREFIXE_GLOBAL):]
+    return PREFIXE_GLOBAL + nom
+
+
+def _globaliser(objet: Objet) -> Objet:
+    """Objet lu dans Global/ : nom et membres préfixés « global_ » (un groupe global ne contient
+    que des objets globaux)."""
+    if objet.sorte == "groupe-adresses":
+        membres = membres_tries([_global(nom) for nom in objet.mentions_adresses])
+        return replace(
+            objet,
+            nom=_global(objet.nom),
+            empreinte=(membres, ()),
+            detail=", ".join(membres) or "(vide)",
+            mentions_adresses=membres,
+            globale=True,
+        )
+    if objet.sorte == "groupe-services":
+        membres = membres_tries([_global(nom) for nom in objet.mentions_services])
+        return replace(
+            objet,
+            nom=_global(objet.nom),
+            empreinte=(membres,),
+            detail=", ".join(membres) or "(vide)",
+            mentions_services=membres,
+            globale=True,
+        )
+    return replace(objet, nom=_global(objet.nom), globale=True)
+
+
+def _canoniser_globaux(
+    objets: list[Objet], regles: list[Regle], liens: list[Lien]
+) -> tuple[list[Objet], list[Regle], list[Lien]]:
+    """Références « Global_X » / « global_X » ramenées au nom canonique de l'objet global lu.
+
+    Un nom local identique garde la priorité ; un nom global inconnu reste tel quel (non défini).
+    """
+    locaux = {objet.nom for objet in objets if not objet.globale}
+    globaux = {objet.nom.lower(): objet.nom for objet in objets if objet.globale}
+
+    def nom(cite: str) -> str:
+        if cite in locaux:
+            return cite
+        return globaux.get(cite.lower(), cite)
+
+    def liste(noms: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(nom(cite) for cite in noms)
+
+    def objet(courant: Objet) -> Objet:
+        if courant.globale:
+            return courant
+        if courant.sorte == "groupe-adresses":
+            membres = membres_tries(liste(courant.mentions_adresses))
+            return replace(
+                courant,
+                empreinte=(membres, ()),
+                detail=", ".join(membres) or "(vide)",
+                mentions_adresses=membres,
+            )
+        if courant.sorte == "groupe-services":
+            membres = membres_tries(liste(courant.mentions_services))
+            return replace(
+                courant,
+                empreinte=(membres,),
+                detail=", ".join(membres) or "(vide)",
+                mentions_services=membres,
+            )
+        return courant
+
+    return (
+        [objet(courant) for courant in objets],
+        [
+            replace(
+                regle,
+                sources=liste(regle.sources),
+                destinations=liste(regle.destinations),
+                services=liste(regle.services),
+                protocoles=liste(regle.protocoles),
+                sources_brutes=liste(regle.sources_brutes),
+                destinations_brutes=liste(regle.destinations_brutes),
+                services_brutes=liste(regle.services_brutes),
+            )
+            for regle in regles
+        ],
+        [
+            replace(
+                lien,
+                adresses=liste(lien.adresses),
+                services=liste(lien.services),
+                protocoles=liste(lien.protocoles),
+            )
+            for lien in liens
+        ],
     )
 
 
@@ -269,7 +388,7 @@ def _hote(nom: str, valeur: str) -> tuple[Objet | None, str | None]:
     if options.get("resolve", "").strip().lower() == "dynamic":
         cle = fqdn_cle(nom)
         return (
-            Objet(sorte="fqdn", nom=nom, empreinte=("fqdn", cle), detail=cle, fige=_FIGE_DYNAMIQUE),
+            Objet(sorte="fqdn", nom=nom, empreinte=("fqdn", cle), detail=cle, fige=FIGE_DYNAMIQUE),
             None,
         )
     elements = tuple(

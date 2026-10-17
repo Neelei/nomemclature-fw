@@ -22,6 +22,8 @@ class Objet:
     vlan: int | None = None
     # Raison pour laquelle le nom ne doit pas changer (ex. nom DNS résolu par le SNS).
     fige: str | None = None
+    # Objet global SMC (SNS, dossier Global/) : non modifiable sur le firewall.
+    globale: bool = False
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,20 @@ class Retrait:
 
 
 @dataclass(frozen=True)
+class RemplacementGlobal:
+    """Objet global SMC remplacé par un objet local (`reutiliser`, `creer`), à revoir, ou à supprimer."""
+
+    sorte: str
+    ancien: str
+    action: str
+    nouveau: str | None
+    contenu: str
+    membres: tuple[str, ...] = ()
+    references: tuple[str, ...] = ()
+    commentaire: str | None = None
+
+
+@dataclass(frozen=True)
 class NonConforme:
     sorte: str
     nom: str
@@ -117,3 +133,4 @@ class Resultat:
     referentiel: str = "aucun : objets à adresse IP signalés à revoir"
     # Objets de la base par défaut SNS, laissés tels quels.
     natifs: tuple[Objet, ...] = ()
+    globaux: tuple[RemplacementGlobal, ...] = ()

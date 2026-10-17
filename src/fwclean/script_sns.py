@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from fwclean.model import ErreurLecture, Inventaire, Objet, Regle
 from fwclean.naming import ESPACE
 from fwclean.script import Script
 from fwclean.sns_natifs import est_natif
+from fwclean.stormshield_natif import FIGE_DYNAMIQUE, PREFIXE_GLOBAL
+
+ACTIVATE = ("CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE")
+# Activation des objets globaux après leur suppression (syntaxe à valider en --dry-run puis
+# sur un SNS de test : non vérifiée sur un équipement).
+ACTIVATE_GLOBAUX = ACTIVATE + ("CONFIG OBJECT ACTIVATE global=1",)
 
 # sorte fwclean → type RENAME SNS / module DELETE.
 TYPES_RENAME = {
@@ -60,8 +68,7 @@ __COMMANDES__
 ]
 
 ACTIVATE = (
-    "CONFIG OBJECT ACTIVATE",
-    "CONFIG FILTER ACTIVATE",
+__ACTIVATE__
 )
 
 
@@ -149,7 +156,7 @@ class _Etat:
 
 
 def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Script:
-    """Produit les trois scripts Python SNS et la liste des ignors."""
+    """Produit les quatre scripts Python SNS et la liste des ignorés."""
     if plan.get("constructeur") != "stormshield":
         raise ErreurLecture("Le script SNS ne concerne que Stormshield.")
     if lot < 1:
@@ -262,6 +269,8 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
             cmds_retrait.append((_commande_delete(sorte, nom), f"retrait — {item.get('motif', 'orphelin')}"))
             _oublier(etat, espace, nom)
 
+    cmds_globaux, compteurs_globaux = _globaux(etat, plan.get("globaux", []), courant, ignores)
+
     return Script(
         renommages=_rendre_script("01 — Renommages SNS", cmds_renom, lot),
         fusions=_rendre_script("02 — Fusions de doublons SNS", cmds_fusion, lot),
@@ -274,8 +283,183 @@ def generer_script_sns(inventaire: Inventaire, plan: dict, lot: int = 20) -> Scr
             "commandes_renommages": len(cmds_renom),
             "commandes_fusions": len(cmds_fusion),
             "commandes_retraits": len(cmds_retrait),
+            "commandes_globaux": len(cmds_globaux),
+            **compteurs_globaux,
         },
+        globaux=_rendre_script(
+            "04 — Remplacement des objets globaux SMC par des objets locaux",
+            cmds_globaux,
+            lot,
+            ACTIVATE_GLOBAUX,
+        ),
     )
+
+
+def _globaux(
+    etat: _Etat,
+    items: list[dict],
+    courant: Callable[[str, str], str | None],
+    ignores: list[str],
+) -> tuple[list[tuple[str, str]], dict[str, int]]:
+    """Lot 04 : création des objets locaux, réécriture des règles et groupes locaux, puis
+    suppression des objets globaux remplacés ou cités par rien (groupes d'abord)."""
+    commandes: list[tuple[str, str]] = []
+    globaux = {cle for cle, objet in etat.objets.items() if objet.globale}
+    remplacants: dict[tuple[str, str], str] = {}
+    a_supprimer: list[tuple[str, str]] = []
+    crees = 0
+
+    for item in items:
+        sorte, ancien, action = item["sorte"], item["ancien"], item["action"]
+        if sorte not in TYPES_RENAME:
+            ignores.append(f"global {ancien} : sorte non gérée ({sorte})")
+            continue
+        espace = ESPACE[sorte]
+        if (espace, ancien) not in globaux:
+            ignores.append(f"global {ancien} : absent de l'export")
+            continue
+        if action == "supprimer":
+            a_supprimer.append((espace, ancien))
+            continue
+        if action not in {"reutiliser", "creer"}:
+            ignores.append(f"global {ancien} : à revoir — {item.get('commentaire') or 'sans remplaçant'}")
+            continue
+        nouveau = item["nouveau"]
+        if action == "reutiliser":
+            local = courant(espace, nouveau)
+            if local is None:
+                ignores.append(f"global {ancien} : objet local {nouveau} absent après les lots 01 à 03")
+                continue
+            remplacants[(espace, ancien)] = local
+            continue
+        if (espace, nouveau) in etat.objets:
+            ignores.append(f"global {ancien} : {nouveau} existe déjà, à reprendre à la main")
+            continue
+        objet = etat.objets[(espace, ancien)]
+        membres: list[str] = []
+        if sorte in {"groupe-adresses", "groupe-services"}:
+            manquants = [m for m in item.get("membres", []) if (espace, m) not in etat.objets]
+            if manquants:
+                ignores.append(
+                    f"global {ancien} : membre(s) {', '.join(manquants)} non créé(s), groupe à reprendre à la main"
+                )
+                continue
+            membres = list(item.get("membres", []))
+        creation = _commandes_new(objet, nouveau, membres, ancien)
+        if creation is None:
+            ignores.append(f"global {ancien} : création de {sorte} non gérée ({objet.detail}), à faire à la main")
+            continue
+        commandes.extend(creation)
+        crees += 1
+        etat.objets[(espace, nouveau)] = replace(objet, nom=nouveau, globale=False)
+        if membres:
+            etat.groupes[(espace, nouveau)] = membres
+        remplacants[(espace, ancien)] = nouveau
+
+    groupes_globaux = {cle for cle in etat.groupes if cle in globaux}
+    remplaces = 0
+    for (espace, ancien), local in remplacants.items():
+        origine = f"{ancien} -> {local}"
+        if (espace, ancien) in etat.cites_route_nat:
+            ignores.append(
+                f"global {ancien} : cité dans une route ou un NAT, remplacer par {local} à la main"
+            )
+            continue
+        commandes.extend(_reecrire_groupes(etat, espace, ancien, local, origine, groupes_globaux))
+        commandes.extend(_reecrire_regles(etat, espace, ancien, local, origine))
+        remplaces += 1
+        a_supprimer.append((espace, ancien))
+
+    supprimes = 0
+    restants = sorted(
+        set(a_supprimer), key=lambda cle: (cle not in groupes_globaux, cle[0], cle[1])
+    )
+    progres = True
+    while restants and progres:
+        progres = False
+        for cle in list(restants):
+            espace, nom = cle
+            if cle in etat.cites_route_nat or _encore_cite(etat, espace, nom) or _cite_ipproto(etat, espace, nom):
+                continue
+            objet = etat.objets[cle]
+            commandes.append(
+                (
+                    f"{_commande_delete(objet.sorte, nom.removeprefix(PREFIXE_GLOBAL))} global=1",
+                    f"suppression objet global — {nom}",
+                )
+            )
+            _oublier(etat, espace, nom)
+            restants.remove(cle)
+            supprimes += 1
+            progres = True
+    for espace, nom in restants:
+        ignores.append(f"suppression de {nom} : encore référencé après remplacement, à reprendre à la main")
+    return commandes, {
+        "globaux_crees": crees,
+        "globaux_remplaces": remplaces,
+        "globaux_supprimes": supprimes,
+    }
+
+
+def _commandes_new(
+    objet: Objet, nom: str, membres: list[str], ancien: str
+) -> list[tuple[str, str]] | None:
+    """Commandes CONFIG OBJECT … NEW d'un objet local (syntaxe à valider en --dry-run)."""
+    origine = f"création {nom} (remplace {ancien})"
+    commentaire = f"comment={_q('remplace ' + ancien + ' (SMC)')}"
+    nom_q = _q(nom)
+    sorte = objet.sorte
+    if sorte == "hote":
+        v4 = [ip for famille, ip, _p in objet.empreinte if famille == "v4"]
+        v6 = [ip for famille, ip, _p in objet.empreinte if famille == "v6"]
+        if len(v4) > 1 or len(v6) > 1:
+            return None
+        adresses = (f" ip={v4[0]}" if v4 else "") + (f" ipv6={v6[0]}" if v6 else "")
+        commande = f"CONFIG OBJECT HOST NEW name={nom_q}{adresses} resolve=static {commentaire}"
+    elif sorte == "fqdn":
+        if objet.fige == FIGE_DYNAMIQUE:
+            commande = f"CONFIG OBJECT HOST NEW name={nom_q} resolve=dynamic {commentaire}"
+        else:
+            commande = f"CONFIG OBJECT FQDN NEW name={nom_q} {commentaire}"
+    elif sorte == "reseau":
+        famille, adresse, prefixe = objet.empreinte[0]
+        if famille != "v4" or len(objet.empreinte) > 1:
+            return None
+        masque = ipaddress.ip_network(f"{adresse}/{prefixe}").netmask
+        commande = f"CONFIG OBJECT NETWORK NEW name={nom_q} ip={adresse} mask={masque} {commentaire}"
+    elif sorte == "plage":
+        _famille, debut, fin = objet.empreinte
+        commande = f"CONFIG OBJECT RANGE NEW name={nom_q} begin={debut} end={fin} {commentaire}"
+    elif sorte == "service":
+        protos = {proto for proto, _plages in objet.empreinte}
+        plages = {plages for _proto, plages in objet.empreinte}
+        if len(plages) != 1 or protos not in ({"tcp"}, {"udp"}, {"tcp", "udp"}):
+            return None
+        (plage,) = plages
+        if len(plage) != 1 or plage[0][2] >= 0:
+            return None
+        debut, fin, _sd, _sf = plage[0]
+        proto = "any" if len(protos) == 2 else protos.pop()
+        bornes = f"port={debut}" + (f" toport={fin}" if fin != debut else "")
+        commande = f"CONFIG OBJECT SERVICE NEW name={nom_q} {bornes} proto={proto} {commentaire}"
+    elif sorte == "protocole":
+        ((_proto, ((numero, _f, _sd, _sf),)),) = objet.empreinte
+        commande = f"CONFIG OBJECT PROTOCOL NEW name={nom_q} protonumber={numero} {commentaire}"
+    elif sorte in {"groupe-adresses", "groupe-services"}:
+        module = "GROUP" if sorte == "groupe-adresses" else "SERVICEGROUP"
+        commandes = [(f"CONFIG OBJECT {module} NEW name={nom_q} {commentaire}", origine)]
+        commandes.extend(
+            (f"CONFIG OBJECT {module} ADDTO group={nom_q} node={_q(membre)}", f"ADDTO — {origine}")
+            for membre in membres
+        )
+        return commandes
+    else:
+        return None
+    return [(commande, origine)]
+
+
+def _cite_ipproto(etat: _Etat, espace: str, nom: str) -> bool:
+    return espace == "protocole" and any(nom in regle.protocoles for regle in etat.regles)
 
 
 def _charger(inventaire: Inventaire) -> _Etat:
@@ -329,14 +513,19 @@ def _renommer_refs(etat: _Etat, espace: str, ancien: str, nouveau: str) -> None:
 
 
 def _reecrire_groupes(
-    etat: _Etat, espace: str, doublon: str, cible: str, origine: str
+    etat: _Etat,
+    espace: str,
+    doublon: str,
+    cible: str,
+    origine: str,
+    sauf: set[tuple[str, str]] | frozenset = frozenset(),
 ) -> list[tuple[str, str]]:
     commandes: list[tuple[str, str]] = []
     module = "GROUP" if espace == "adresse" else "SERVICEGROUP" if espace == "service" else None
     if module is None:
         return commandes
     for (esp_g, nom_g), membres in list(etat.groupes.items()):
-        if esp_g != espace or doublon not in membres:
+        if esp_g != espace or doublon not in membres or (esp_g, nom_g) in sauf:
             continue
         if cible not in membres:
             commandes.append(
@@ -440,7 +629,9 @@ def _liste(valeurs: tuple[str, ...]) -> str:
     return _q("|".join(valeurs)) if valeurs else '""'
 
 
-def _rendre_script(titre: str, commandes: list[tuple[str, str]], lot: int) -> str:
+def _rendre_script(
+    titre: str, commandes: list[tuple[str, str]], lot: int, activate: tuple[str, ...] = ACTIVATE
+) -> str:
     lignes: list[str] = []
     for index, (commande, origine) in enumerate(commandes):
         if index and index % lot == 0:
@@ -449,4 +640,9 @@ def _rendre_script(titre: str, commandes: list[tuple[str, str]], lot: int) -> st
         org = origine.replace("\\", "\\\\").replace('"', '\\"')
         lignes.append(f'    ("{cmd}", "{org}"),')
     corps = "\n".join(lignes) if lignes else "    # (aucune commande)"
-    return _GABARIT.replace("__TITRE__", titre).replace("__COMMANDES__", corps)
+    activation = "\n".join(f'    "{commande}",' for commande in activate)
+    return (
+        _GABARIT.replace("__TITRE__", titre)
+        .replace("__COMMANDES__", corps)
+        .replace("__ACTIVATE__", activation)
+    )

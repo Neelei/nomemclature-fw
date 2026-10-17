@@ -68,6 +68,20 @@ def plan_dict(resultat: Resultat) -> dict:
         plan["natifs_ignores"] = [
             {"sorte": objet.sorte, "nom": objet.nom} for objet in resultat.natifs
         ]
+    if resultat.globaux:
+        plan["globaux"] = [
+            {
+                "sorte": item.sorte,
+                "ancien": item.ancien,
+                "action": item.action,
+                "nouveau": item.nouveau,
+                "contenu": item.contenu,
+                "membres": list(item.membres),
+                "references": list(item.references),
+                "commentaire": item.commentaire,
+            }
+            for item in resultat.globaux
+        ]
     return plan
 
 
@@ -104,6 +118,8 @@ def _markdown(resultat: Resultat) -> str:
     ]
     if inventaire.constructeur == "stormshield":
         lignes.append(f"| Objets natifs SNS ignorés | {len(resultat.natifs)} |")
+    if resultat.globaux:
+        lignes.append(f"| Objets globaux SMC à remplacer ou supprimer | {len(resultat.globaux)} |")
     lignes.append("")
     lignes.extend(_avertissements(inventaire))
     lignes.extend(["## Noms non conformes", ""])
@@ -161,7 +177,7 @@ def _markdown(resultat: Resultat) -> str:
             lignes.extend(
                 [
                     "**À vérifier avant chaque suppression** : « Vérifier l'utilisation » sur "
-                    "l'objet dans le SNS. Routeurs, objets globaux SMC, VPN, DHCP et proxys ne "
+                    "l'objet dans le SNS. Routeurs, VPN, DHCP et proxys ne "
                     "sont pas lus : un objet cité seulement par eux figure ici à tort.",
                     "",
                 ]
@@ -190,6 +206,8 @@ def _markdown(resultat: Resultat) -> str:
             lignes.append(
                 f"| {_cell(LIBELLE.get(objet.sorte, objet.sorte))} | {_cell(objet.nom)} |"
             )
+    if resultat.globaux:
+        lignes.extend(_globaux(resultat))
     if inventaire.ignores:
         lignes.extend(["", "## Objets ignorés", ""])
         for ignore in inventaire.ignores:
@@ -207,6 +225,51 @@ def _markdown(resultat: Resultat) -> str:
         ]
     )
     return "\n".join(lignes)
+
+
+_ACTIONS_GLOBAL = {
+    "reutiliser": "réutiliser l'objet local",
+    "creer": "créer l'objet local",
+    "revoir": "à revoir",
+    "supprimer": "supprimer (non cité)",
+}
+
+
+def _globaux(resultat: Resultat) -> list[str]:
+    lignes = [
+        "",
+        "## Objets globaux SMC",
+        "",
+        "Objets du dossier Global/, non modifiables sur le firewall. Après copie des règles "
+        "globales dans la politique locale, chaque global cité est remplacé par un objet local "
+        "(réutilisé s'il existe à l'identique, créé sinon), puis supprimé (lot 04-globaux). "
+        "Les globaux qui ne sont plus cités sont supprimés.",
+        "",
+    ]
+    compte: dict[str, int] = {}
+    for item in resultat.globaux:
+        compte[item.action] = compte.get(item.action, 0) + 1
+    lignes.append(
+        ", ".join(f"{_ACTIONS_GLOBAL[action]} : {nombre}" for action, nombre in sorted(compte.items()))
+        + "."
+    )
+    lignes.extend(
+        [
+            "",
+            "| Sorte | Objet global | Contenu | Action | Objet local | Commentaire |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for item in resultat.globaux:
+        contenu = item.contenu
+        if item.membres:
+            contenu += f" → {', '.join(item.membres)}"
+        lignes.append(
+            f"| {_cell(LIBELLE.get(item.sorte, item.sorte))} | {_cell(item.ancien)} | "
+            f"{_cell(contenu)} | {_cell(_ACTIONS_GLOBAL[item.action])} | "
+            f"{_cell(item.nouveau or '—')} | {_cell(item.commentaire or '')} |"
+        )
+    return lignes
 
 
 def _avertissements(inventaire: Inventaire) -> list[str]:

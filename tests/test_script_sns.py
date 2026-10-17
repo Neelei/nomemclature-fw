@@ -120,3 +120,84 @@ def test_cli_sns_ecrit_py(tmp_path):
     assert code == 0
     for nom in ("01-renommages.py", "02-fusions.py", "03-retraits.py", "ignores.txt"):
         assert (sortie / nom).is_file()
+
+
+def _export_slot_05(tmp_path):
+    import shutil
+
+    dossier = tmp_path / "sns"
+    shutil.copytree(EXEMPLE, dossier, ignore=shutil.ignore_patterns("Filter"))
+    (dossier / "Filter").mkdir()
+    shutil.copy(EXEMPLE / "Filter", dossier / "Filter" / "05")
+    return dossier
+
+
+def test_lot_globaux(tmp_path, contextes, referentiel):
+    from fwclean.audit import auditer
+    from fwclean.report import plan_dict
+
+    inventaire = charger([_export_slot_05(tmp_path)])
+    plan = plan_dict(auditer(inventaire, contextes, referentiel))
+    script = generer_script_sns(inventaire, plan)
+    lot = script.globaux
+    assert "CONFIG OBJECT HOST NEW name=SIEGE_HST_SERVEURS_SRV-APPLI ip=10.1.2.20 resolve=static" in lot
+    assert "CONFIG OBJECT SERVICE NEW name=SVC_TCP_8080_HTTP-APPLI port=8080 proto=tcp" in lot
+    assert "CONFIG OBJECT GROUP ADDTO group=SIEGE_GRP_MULTI_IMBRIQUE node=SIEGE_GRP_MULTI_SERVEURS" in lot
+    # Le groupe imbriqué est créé après le groupe qu'il contient.
+    assert lot.index("GROUP NEW name=SIEGE_GRP_MULTI_SERVEURS") < lot.index("GROUP NEW name=SIEGE_GRP_MULTI_IMBRIQUE")
+    # Règles g1 (position 10) et g2 (position 11) réécrites vers les objets locaux.
+    assert "index=05 global=0 type=filter position=10 srctarget=SIEGE_GRP_MULTI_IMBRIQUE output=xml" in lot
+    assert "position=10 dsttarget=SIEGE_HST_DMZ_SRV-WEB output=xml" in lot
+    assert "position=10 dstport=SG_WEB-APPLI output=xml" in lot
+    assert "position=11 dstport=SVC_TCP_8080_HTTP-APPLI output=xml" in lot
+    # Suppressions global=1, groupe englobant avant le groupe contenu, après les réécritures.
+    assert lot.index("RULE UPDATE") < lot.index("DELETE name=GRP_IMBRIQUE global=1")
+    assert lot.index("DELETE name=GRP_IMBRIQUE global=1") < lot.index("DELETE name=GRP_SERVEURS global=1")
+    assert "CONFIG OBJECT HOST DELETE name=SRV_RETIRE global=1" in lot
+    assert "CONFIG OBJECT NETWORK DELETE name=LAN_USERS global=1" in lot
+    # Cité par une route, membre d'un groupe global à revoir, ou à revoir : pas supprimés.
+    for nom in ("PASSERELLE_SECOURS", "SRV_APPLI", "NAS_INCONNU", "GRP_A_REVOIR"):
+        assert f"DELETE name={nom} global=1" not in lot
+    assert any("global_PASSERELLE_SECOURS : cité dans une route" in i for i in script.ignores)
+    assert any("global_GRP_A_REVOIR : à revoir" in i for i in script.ignores)
+    assert '"CONFIG OBJECT ACTIVATE global=1",' in lot
+    assert "global=1" not in script.retraits
+    ns: dict = {}
+    exec(lot, ns)
+    assert ns["main"](["--dry-run"]) == 0
+
+
+def test_lot_globaux_objet_local_existant(tmp_path, contextes, referentiel):
+    from fwclean.audit import auditer
+    from fwclean.report import plan_dict
+
+    inventaire = charger([_export_slot_05(tmp_path)])
+    plan = plan_dict(auditer(inventaire, contextes, referentiel))
+    for item in plan["globaux"]:
+        if item["ancien"] == "global_SRV_APPLI":
+            item["nouveau"] = "SIEGE_HST_DMZ_SRV-WEB"
+    script = generer_script_sns(inventaire, plan)
+    assert any("global_SRV_APPLI : SIEGE_HST_DMZ_SRV-WEB existe déjà" in i for i in script.ignores)
+    assert any("global_GRP_SERVEURS : membre(s) SIEGE_HST_SERVEURS_SRV-APPLI non créé(s)" in i for i in script.ignores)
+    assert "DELETE name=GRP_SERVEURS global=1" not in script.globaux
+
+
+def test_cli_sns_ecrit_lot_globaux(tmp_path, racine):
+    sortie = tmp_path / "out"
+    dossier = _export_slot_05(tmp_path)
+    assert executer(
+        [
+            "audit",
+            str(dossier),
+            "--sortie",
+            str(sortie),
+            "--contextes",
+            str(racine / "contextes.txt"),
+            "--reseaux",
+            str(racine / "reseaux.exemple.csv"),
+        ]
+    ) == 0
+    assert executer(
+        ["script", str(dossier), "--plan", str(sortie / "plan.json"), "--sortie", str(sortie / "sns")]
+    ) == 0
+    assert "global=1" in (sortie / "sns" / "04-globaux.py").read_text(encoding="utf-8")

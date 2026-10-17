@@ -8,10 +8,12 @@ from fwclean.audit import auditer
 from fwclean.charger import charger
 from fwclean.cli import executer
 from fwclean.model import ErreurLecture
+from fwclean.report import plan_dict
 from fwclean.reseaux import completer_reseaux, ecrire_reseaux, reseaux_sns
 from fwclean.sites import analyser_reseaux
 from fwclean.stormshield_natif import (
     AVERTISSEMENT_NON_GERES,
+    AVERTISSEMENT_ROUTEURS,
     VERIFIER_USAGE,
     genre_natif,
     lire_filtre_natif,
@@ -179,13 +181,14 @@ def test_exemple_natif(racine, contextes, referentiel):
     inventaire = charger([racine / "examples" / "stormshield-natif"])
     resultat = auditer(inventaire, contextes, referentiel)
     assert inventaire.constructeur == "stormshield"
-    assert len(inventaire.regles) == 7
+    assert len(inventaire.regles) == 9
     assert inventaire.retraits_suspendus is None
     assert [(item.sorte, item.nom) for item in resultat.retraits] == [
         ("groupe-adresses", "grp_oublie"),
         ("protocole", "esp_ancien"),
     ]
-    assert AVERTISSEMENT_NON_GERES in inventaire.avertissements
+    assert AVERTISSEMENT_ROUTEURS in inventaire.avertissements
+    assert AVERTISSEMENT_NON_GERES not in inventaire.avertissements
     assert VERIFIER_USAGE in inventaire.avertissements
     assert inventaire.non_definis == ("Routeur_Principal", "global_SRV_PROXY", "mail")
     renommages = {(item.sorte, item.ancien): item.nouveau for item in resultat.renommages}
@@ -242,9 +245,10 @@ def test_slots_filter_et_dossier_global(racine, tmp_path):
     (dossier / "Filter" / "02").write_text('[Filter]\npass from Web_DMZ to any rulename "r1"\n', encoding="utf-8")
     (dossier / "Filter" / "03").write_text("", encoding="utf-8")
     (dossier / "global").mkdir()
+    (dossier / "global" / "router").write_text("[r]\n", encoding="utf-8")
     inventaire = charger([dossier])
     assert sorted(regle.nom for regle in inventaire.regles) == ["01:r1", "02:r1"]
-    assert any("global/" in source for source in inventaire.sources)
+    assert any(source.endswith("global/router") for source in inventaire.sources)
     assert "objectgroup, servicegroup non lus" in inventaire.retraits_suspendus
 
 
@@ -344,7 +348,8 @@ def test_audit_cli_natif(racine, tmp_path, capsys):
     assert plan["avertissements"]["noms_non_definis"] == ["Routeur_Principal", "global_SRV_PROXY", "mail"]
     rapport = (sortie / "rapport.md").read_text(encoding="utf-8")
     assert "## Avertissements" in rapport and "`global_SRV_PROXY`" in rapport
-    assert "objets routeur non lus" in rapport
+    assert "Objets routeur non lus" in rapport
+    assert "## Objets globaux SMC" in rapport
     assert "| Orphelins | 2 |" in rapport
     assert "| Objets natifs SNS ignorés | 5 |" in rapport
     assert "## Objets natifs SNS ignorés" in rapport
@@ -420,3 +425,70 @@ def test_reseaux_ajouter_vlan_absent_de_l_interface(contextes):
     assert completer_reseaux(existant, sans_tag, "siege", "Network", contextes).presentes
     autre_tag = [replace(lignes[-1], vlan=11)]
     assert completer_reseaux(existant, autre_tag, "siege", "Network", contextes).differentes
+
+
+def test_objets_globaux_lus(racine):
+    inventaire = charger([racine / "examples" / "stormshield-natif"])
+    globaux = {objet.nom: objet for objet in inventaire.objets if objet.globale}
+    assert set(globaux) == {
+        "global_SRV_WEB",
+        "global_SRV_APPLI",
+        "global_NAS_INCONNU",
+        "global_PASSERELLE_SECOURS",
+        "global_SRV_RETIRE",
+        "global_LAN_USERS",
+        "global_http_appli",
+        "global_GRP_SERVEURS",
+        "global_GRP_IMBRIQUE",
+        "global_GRP_A_REVOIR",
+        "global_WEB_APPLI",
+    }
+    assert globaux["global_GRP_IMBRIQUE"].mentions_adresses == ("global_GRP_SERVEURS", "global_LAN_USERS")
+    assert not any(objet.globale for objet in inventaire.objets if not objet.nom.startswith("global_"))
+    regles = {regle.nom: regle for regle in inventaire.regles}
+    # « Global_X » et « global_X » ramenés au même nom canonique.
+    assert regles["g1"].sources == ("global_GRP_IMBRIQUE",)
+    assert regles["g1"].services_brutes == ("global_WEB_APPLI",)
+    assert any("global_PASSERELLE_SECOURS" in lien.adresses for lien in inventaire.liens)
+    # Global non fourni dans Global/object : reste non défini.
+    assert "global_SRV_PROXY" in inventaire.non_definis
+
+
+def test_plan_objets_globaux(racine, contextes, referentiel):
+    resultat = auditer(charger([racine / "examples" / "stormshield-natif"]), contextes, referentiel)
+    actions = {item.ancien: (item.action, item.nouveau) for item in resultat.globaux}
+    assert actions["global_SRV_WEB"] == ("reutiliser", "SIEGE_HST_DMZ_SRV-WEB")
+    assert actions["global_LAN_USERS"] == ("reutiliser", "SIEGE_NET_V10_LAN-USERS")
+    assert actions["global_SRV_APPLI"] == ("creer", "SIEGE_HST_SERVEURS_SRV-APPLI")
+    assert actions["global_http_appli"] == ("creer", "SVC_TCP_8080_HTTP-APPLI")
+    assert actions["global_GRP_SERVEURS"] == ("creer", "SIEGE_GRP_MULTI_SERVEURS")
+    assert actions["global_WEB_APPLI"] == ("creer", "SG_WEB-APPLI")
+    assert actions["global_NAS_INCONNU"] == ("revoir", None)
+    assert actions["global_GRP_A_REVOIR"] == ("revoir", None)
+    assert actions["global_SRV_RETIRE"] == ("supprimer", None)
+    imbrique = next(item for item in resultat.globaux if item.ancien == "global_GRP_IMBRIQUE")
+    assert imbrique.membres == ("SIEGE_GRP_MULTI_SERVEURS", "SIEGE_NET_V10_LAN-USERS")
+    ordre = [item.ancien for item in resultat.globaux]
+    assert ordre.index("global_GRP_SERVEURS") < ordre.index("global_GRP_IMBRIQUE")
+    # Les globaux ne sont ni renommés, ni fusionnés, ni retirés, ni signalés non conformes.
+    touches = (
+        {item.ancien for item in resultat.renommages}
+        | {nom for fusion in resultat.fusions for nom in (fusion.conserve, *fusion.supprimes)}
+        | {item.nom for item in resultat.retraits}
+        | {item.nom for item in resultat.non_conformes}
+    )
+    assert not {nom for nom in touches if nom.startswith("global_")}
+    plan = plan_dict(resultat)
+    assert {"sorte": "hote", "ancien": "global_SRV_RETIRE", "action": "supprimer"}.items() <= next(
+        item for item in plan["globaux"] if item["ancien"] == "global_SRV_RETIRE"
+    ).items()
+
+
+def test_globaux_non_cites_a_revoir_si_retraits_suspendus(racine, tmp_path, contextes, referentiel):
+    dossier = tmp_path / "sns"
+    shutil.copytree(racine / "examples" / "stormshield-natif", dossier)
+    (dossier / "objectgroup").unlink()
+    resultat = auditer(charger([dossier]), contextes, referentiel)
+    retire = next(item for item in resultat.globaux if item.ancien == "global_SRV_RETIRE")
+    assert retire.action == "revoir"
+    assert "retraits suspendus" in retire.commentaire

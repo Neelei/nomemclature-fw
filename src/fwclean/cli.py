@@ -196,6 +196,12 @@ def _auditer(args: argparse.Namespace) -> int:
     )
     if resultat.inventaire.constructeur == "stormshield":
         print(f"Objets natifs SNS ignorés : {len(resultat.natifs)}.")
+    if resultat.globaux:
+        actions: dict[str, int] = {}
+        for item in resultat.globaux:
+            actions[item.action] = actions.get(item.action, 0) + 1
+        detail = ", ".join(f"{action} {nombre}" for action, nombre in sorted(actions.items()))
+        print(f"Objets globaux SMC : {len(resultat.globaux)} ({detail}).")
     for message in resultat.inventaire.avertissements:
         print(f"Avertissement : {message}")
     print("Aucune modification appliquée.")
@@ -325,6 +331,8 @@ def _script(args: argparse.Namespace) -> int:
             (dossier / "01-renommages.py").write_text(resultat.renommages, encoding="utf-8")
             (dossier / "02-fusions.py").write_text(resultat.fusions, encoding="utf-8")
             (dossier / "03-retraits.py").write_text(resultat.retraits, encoding="utf-8")
+            if plan.get("globaux"):
+                (dossier / "04-globaux.py").write_text(resultat.globaux, encoding="utf-8")
             ignores = "\n".join(f"- {ligne}" for ligne in resultat.ignores) or "Aucun."
             (dossier / "ignores.txt").write_text(
                 "Opérations du plan non reprises dans les scripts SNS :\n\n" + ignores + "\n",
@@ -339,7 +347,16 @@ def _script(args: argparse.Namespace) -> int:
                 f"retraits : {c['retraits']}, "
                 f"ignorés : {len(resultat.ignores)} (voir ignores.txt)."
             )
-            print("Exécuter avec --dry-run puis sans, dans l'ordre 01 → 02 → 03. Rien n'a été envoyé.")
+            ordre = "01 → 02 → 03"
+            if plan.get("globaux"):
+                print(
+                    f"Objets globaux SMC : {c['globaux_crees']} objet(s) local(aux) créé(s), "
+                    f"{c['globaux_remplaces']} remplacé(s) dans les règles et groupes, "
+                    f"{c['globaux_supprimes']} suppression(s) global=1 "
+                    f"({c['commandes_globaux']} commandes)."
+                )
+                ordre += " → 04"
+            print(f"Exécuter avec --dry-run puis sans, dans l'ordre {ordre}. Rien n'a été envoyé.")
             return 0
 
         texte = Path(args.chemin).read_text(encoding="utf-8-sig")

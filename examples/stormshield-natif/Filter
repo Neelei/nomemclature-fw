@@ -12,3 +12,6 @@ block from !Reseau_Gras to Res-DMZ port syslog|rdp rulename "r4"
 pass from user=jdupont@Plage_VPN via ipsec to srv_web ipproto gre_tunnel rulename "r5"
 pass from Network_in to updates.example.com|mirror.example.org port SVC_TCP_443_HTTPS rulename "r6"
 reset from any to global_SRV_PROXY port mail rulename "r7"  # objet global SMC et groupe non fournis
+separator color="c0c0c0" comment="Règles copiées de la politique globale SMC" collapse="0"
+pass from Global_GRP_IMBRIQUE to global_SRV_WEB port Global_WEB_APPLI rulename "g1"
+pass from Res-VLAN10 to global_GRP_A_REVOIR port global_http_appli rulename "g2"

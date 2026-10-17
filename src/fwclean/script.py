@@ -166,6 +166,8 @@ class Script:
     compteurs: dict[str, int]
     erreurs_deja_appliquees: tuple[str, ...] = ()
     rattrapage: str = ""
+    # Stormshield : lot 04, remplacement des objets globaux SMC.
+    globaux: str = ""
 
 
 def generer_script(

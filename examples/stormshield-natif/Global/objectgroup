@@ -1,0 +1,13 @@
+# Exemple synthétique du fichier natif SNS Global/objectgroup : membres sans préfixe global_.
+# Cas couverts : groupe à créer, groupe imbriqué, groupe dont un membre est à revoir.
+[GRP_SERVEURS]
+SRV_WEB
+SRV_APPLI
+
+[GRP_IMBRIQUE]
+GRP_SERVEURS
+LAN_USERS
+
+[GRP_A_REVOIR]
+NAS_INCONNU
+SRV_APPLI
