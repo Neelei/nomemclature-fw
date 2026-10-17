@@ -40,22 +40,22 @@ uv run fwclean audit inbox/ --sortie out
 uv run fwclean audit inbox/stormshield --sortie out/stormshield
 ```
 
-Un audit porte sur un seul constructeur et un seul format (FortiGate, CSV Stormshield ou fichiers natifs SNS). Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--contextes` pointe vers un autre fichier de zones que `./contextes.txt`, `--reseaux` vers un autre référentiel que `./reseaux.csv`.
+Un audit porte sur un seul constructeur et un seul format (FortiGate, CSV Stormshield ou fichiers natifs SNS). Sans `--sortie`, les fichiers vont dans `out/` (ignoré par git). `--reseaux` pointe vers un autre référentiel que `./reseaux.csv`.
 
 ## Sites et interfaces
 
-Les noms d'objets portent le site puis l'interface du réseau de l'objet : `HQ_HST_CABINES_PC01`. Les réseaux portent en plus le VLAN optionnel : `HQ_NET_V16_CABINES`, ou `HQ_NET_CABINES` sans VLAN. La colonne `zone` de `reseaux.csv` reste pour l'inventaire FortiGate et n'entre dans aucun nom. Les règles ne sont pas renommées pour le moment. Site, zone, VLAN et interface viennent de `reseaux.csv` :
+Les noms d'objets portent le site puis l'interface du réseau de l'objet : `HQ_HST_CABINES_PC01`. Les réseaux portent en plus le VLAN optionnel : `HQ_NET_V16_CABINES`, ou `HQ_NET_CABINES` sans VLAN. Les règles ne sont pas renommées pour le moment. Site, VLAN et interface viennent de `reseaux.csv` :
 
 ```text
-reseau;site;zone;vlan;interface
-10.0.16.0/24;hq;lan;16;CABINES
-10.0.28.0/24;hq;lan;28;LABO_ANA
-192.168.1.0/24;hq;;;mgmt
+reseau;site;vlan;interface
+10.0.16.0/24;hq;16;CABINES
+10.0.28.0/24;hq;28;LABO_ANA
+192.168.1.0/24;hq;;mgmt
 ```
 
-Le réseau le plus précis qui contient l'objet gagne. Le nom d'interface est normalisé (`LABO_ANA` → `LABO-ANA`). Un sous-réseau garde son ancien nom après l'interface (`HQ_NET_V16_CABINES-IMPRIMANTES`). Un groupe dont les membres sont sur plusieurs sites ou interfaces prend `MULTI` ; une VIP prend l'interface de son adresse interne. Un objet hors référentiel, ou dont le réseau n'a pas d'interface (ancien `reseaux.csv` à 4 colonnes), n'est pas renommé : il est listé à revoir avec un commentaire. Services, groupes de services (`SG_WEB`) et calendriers n'ont ni site ni interface. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
+Le réseau le plus précis qui contient l'objet gagne. Le nom d'interface est normalisé (`LABO_ANA` → `LABO-ANA`). Un sous-réseau garde son ancien nom après l'interface (`HQ_NET_V16_CABINES-IMPRIMANTES`). Un groupe dont les membres sont sur plusieurs sites ou interfaces prend `MULTI` ; une VIP prend l'interface de son adresse interne. Un objet hors référentiel, ou dont le réseau n'a pas d'interface (ancien `reseaux.csv` `reseau;site;zone;vlan`), n'est pas renommé : il est listé à revoir avec un commentaire. Services, groupes de services (`SG_WEB`) et calendriers n'ont ni site ni interface. Un service porte protocole (`TCP`, `UDP`, `ANY` pour les deux) et port, puis son libellé : `SVC_TCP_8080_HTTP`, `SVC_ANY_53_DNS`.
 
-`reseaux.csv` est le référentiel versionné (édition manuelle). Pour démarrer depuis l'exemple : `cp reseaux.exemple.csv reseaux.csv`, puis adapter les lignes. Sans `reseaux.csv`, l'audit tourne quand même et liste les objets d'adresse à revoir. Les zones FortiGate et leur nom court (`lan`, `dmz`, `wan`, `mgmt = MGMT NETWORKS`, …), pour la seule colonne `zone` de l'inventaire, sont dans `contextes.txt`.
+`reseaux.csv` est le référentiel versionné (édition manuelle). Pour démarrer depuis l'exemple : `cp reseaux.exemple.csv reseaux.csv`, puis adapter les lignes. Sans `reseaux.csv`, l'audit tourne quand même et liste les objets d'adresse à revoir. L'ancien format avec colonne `zone` (`reseau;site;zone;vlan;interface`) reste lu : la zone est ignorée, quelle que soit sa valeur.
 
 La commande affiche les compteurs et écrit :
 
@@ -90,9 +90,9 @@ uv run pytest
 uv run fwclean reseaux inbox/pare-feu.conf --site siege
 ```
 
-Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate : zone FortiGate de chaque interface traduite par `contextes.txt` (`mgmt = MGMT NETWORKS`), vide hors zone ; `vlanid` dans la colonne `vlan` ; **alias** de l'interface (`set alias`) dans la colonne `interface`, par exemple `CENTRALE DETECTION GAZ` pour `VLAN-25`, ce qui donne `HQ_NET_V25_CENTRALE-DETECTION-GAZ`. Une interface sans alias garde son nom technique, signalé en commentaire de ligne et en fin de commande ; un alias ou un nom qui ne dit rien (`VLAN-131`, `port3`) est signalé aussi. Les remplacer à la main dans la colonne avant de produire les scripts. Relancé avec `--ajouter` sur un fichier qui porte encore les noms techniques, il les remplace par l'alias, sans toucher aux noms corrigés à la main. `--ecraser` remplace un fichier existant.
+Écrit `./reseaux.csv` avec les réseaux directement connectés du FortiGate : `vlanid` dans la colonne `vlan` ; **alias** de l'interface (`set alias`) dans la colonne `interface`, par exemple `CENTRALE DETECTION GAZ` pour `VLAN-25`, ce qui donne `HQ_NET_V25_CENTRALE-DETECTION-GAZ`. Une interface sans alias garde son nom technique, signalé en commentaire de ligne et en fin de commande ; un alias ou un nom qui ne dit rien (`VLAN-131`, `port3`) est signalé aussi. Les remplacer à la main dans la colonne avant de produire les scripts. Relancé avec `--ajouter` sur un fichier qui porte encore les noms techniques, il les remplace par l'alias, sans toucher aux noms corrigés à la main. `--ecraser` remplace un fichier existant.
 
-Sur un SNS, `uv run fwclean reseaux inbox/stormshield --site siege` lit le fichier `Network` : une ligne par interface à adresse statique, `vlan` = `Tag`, `interface` = `Name`, zone toujours vide.
+Sur un SNS, `uv run fwclean reseaux inbox/stormshield --site siege` lit le fichier `Network` : une ligne par interface à adresse statique, `vlan` = `Tag`, `interface` = `Name`.
 
 Pour compléter un `reseaux.csv` existant avec un second firewall, sans rien écraser :
 
@@ -100,21 +100,21 @@ Pour compléter un `reseaux.csv` existant avec un second firewall, sans rien éc
 uv run fwclean reseaux inbox/stormshield --site siege --ajouter
 ```
 
-`--ajouter` ajoute les réseaux absents en fin de fichier et migre l'ancien format : les lignes du même site sans interface reçoivent zone, VLAN et interface, l'en-tête passe à 5 colonnes. Il garde les autres lignes et commentaires, et signale sans le modifier un réseau déjà présent avec un autre site, une autre zone, un autre VLAN ou une autre interface. La commande peut être relancée : elle n'ajoute rien de plus et ne touche pas aux lignes écrites à la main.
+`--ajouter` ajoute les réseaux absents en fin de fichier et migre l'ancien format : les lignes du même site sans interface reçoivent VLAN et interface, la colonne zone est retirée et l'en-tête passe à `reseau;site;vlan;interface`. Il garde les autres lignes et commentaires, et signale sans le modifier un réseau déjà présent avec un autre site, un autre VLAN ou une autre interface. La commande peut être relancée : elle n'ajoute rien de plus et ne touche pas aux lignes écrites à la main.
 
 ### Ajouter un site distant à la main
 
 Les réseaux non connectés au firewall audité (sites distants, pools VPN, IP publiques) s'ajoutent à la main dans `reseaux.csv`, une ligne par réseau :
 
 ```text
-reseau;site;zone;vlan;interface
-10.210.0.0/24;gras;;210;SRV
-10.211.0.0/24;gras;;211;POSTE-FILAIRE
+reseau;site;vlan;interface
+10.210.0.0/24;gras;210;SRV
+10.211.0.0/24;gras;211;POSTE-FILAIRE
 ```
 
-- format `reseau;site;zone;vlan;interface`, séparateur `;`, site et zone en minuscules ;
+- format `reseau;site;vlan;interface`, séparateur `;`, site en minuscules ;
 - un nouveau site s'ajoute librement : il suffit de l'écrire (lettres et chiffres, ni `ctx` ni `multi`) ;
-- l'interface est le libellé du VLAN sur le site distant ; la zone reste vide (une zone remplie doit figurer dans `contextes.txt`) ;
+- l'interface est le libellé du VLAN sur le site distant ;
 - `vlan` est facultatif : laisser le champ vide.
 
 Un exemple de site distant figure dans [`reseaux.exemple.csv`](reseaux.exemple.csv).
@@ -139,4 +139,4 @@ uv run fwclean script inbox/stormshield --plan out/stormshield/plan.json --sorti
 
 ## Premier passage sur un export réel
 
-Générer ou remplir `reseaux.csv` avec les réseaux et sites réels, relire la colonne `interface` (interfaces sans alias, noms peu parlants), ajuster les zones de `contextes.txt` (clés en minuscules), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel ou les réseaux sans interface. Les noms proposés sont en majuscules (`SIEGE_HST_DMZ_WEB-01`). Une fois le plan relu, produire le script, l'appliquer lot par lot, puis ré-exporter et relancer l'audit. Ce passage ne sert pas à réécrire les règles.
+Générer ou remplir `reseaux.csv` avec les réseaux et sites réels, relire la colonne `interface` (interfaces sans alias, noms peu parlants), puis relancer l'audit. Les objets « à revoir » restants montrent les adresses absentes du référentiel ou les réseaux sans interface. Les noms proposés sont en majuscules (`SIEGE_HST_DMZ_WEB-01`). Une fois le plan relu, produire le script, l'appliquer lot par lot, puis ré-exporter et relancer l'audit. Ce passage ne sert pas à réécrire les règles.

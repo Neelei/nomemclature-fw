@@ -4,7 +4,7 @@ Convention commune pour les objets FortiGate et Stormshield. Elle ne décrit pas
 
 ## Forme
 
-Le troisième segment des objets d'adresse est l'**interface** du réseau qui contient l'objet, lue dans [`reseaux.csv`](#référentiel-reseauxcsv). La colonne `zone` de ce fichier reste pour l'inventaire FortiGate ; elle n'entre dans aucun nom.
+Le troisième segment des objets d'adresse est l'**interface** du réseau qui contient l'objet, lue dans [`reseaux.csv`](#référentiel-reseauxcsv).
 
 | Objets | Forme | Exemple |
 | --- | --- | --- |
@@ -48,32 +48,15 @@ Un nom proposé trop long est raccourci **dans son détail seulement**, à une f
 
 Le préfixe doit correspondre au type réel de l'objet. `SIEGE_NET_DMZ_WEB` n'est pas un nom conforme pour un hôte.
 
-## Site, interface et zone
+## Site et interface
 
 Le **site** est le premier segment d'un objet d'adresse, le préfixe le deuxième. Il est valide s'il figure dans le référentiel [`reseaux.csv`](#référentiel-reseauxcsv), ou s'il vaut `MULTI`.
 
 L'**interface** est le troisième segment des objets non réseau et le dernier des réseaux. C'est la colonne `interface` de `reseaux.csv`, **normalisée** : `_`, espaces et autres signes deviennent `-`, accents retirés, majuscules. `LABO_ANA` → `LABO-ANA`, `WIFI INVITE` → `WIFI-INVITE`, `SAN Mgmt` → `SAN-MGMT`. Sans cela on ne pourrait plus découper le nom sur `_`. Deux interfaces qui donnent le même nom normalisé (`LABO_ANA` et `LABO-ANA`) sont signalées par `fwclean reseaux` : en renommer une dans la colonne.
 
-La **zone** est la colonne `zone` de `reseaux.csv` : inventaire de la zone FortiGate (nom court d'un seul segment, `mgmt = MGMT NETWORKS` via [`contextes.txt`](../contextes.txt)). Elle **n'entre dans aucun nom** — ni réseaux, ni hôtes, ni groupes. Stormshield n'a pas de zones : la colonne reste vide.
+Les zones FortiGate et les contextes n'interviennent pas : ni dans les noms, ni dans `reseaux.csv`.
 
-La comparaison est **case-insensitive** : les fichiers gardent leurs clés en minuscules (`siege`, `lan`), les noms les écrivent en majuscules. Ajouter un site, une interface ou une zone ne demande pas de modifier le programme.
-
-Zones livrées dans `contextes.txt`, reprises des zones FortiGate d'EPFRFORTI01 (colonne `zone` seulement) :
-
-| Zone (fichier) | Zone FortiGate |
-| --- | --- |
-| `lan` | `LAN` : réseaux internes |
-| `dmz` | `DMZ` : zone exposée |
-| `wan` | `WAN` (zone SD-WAN) : accès opérateur |
-| `mgmt` | `MGMT NETWORKS` : iDRAC, Datacore, SAN |
-| `bastion` | `Bastion ADMIN_MGMT` |
-| `users` | `Users LAN` : Wi-Fi corporate |
-| `preprodfr` | `PreProd FRANCE` |
-| `preprodth` | `PreProd THAILANDE` |
-| `invite` | `WIFI INVITE VLAN-42` |
-| `mobile` | `WIFI MOBILE VLAN-41` |
-
-Les anciennes entrées `vpn`, `oob` et `loop` (interfaces hors zone `ssl.root`, `mgmt`, `LOOPMGMT`) et les correspondances d'interfaces Stormshield (`FObouygues`, `HA`, `VTI_FRSI_THUS`…) sont retirées : ces interfaces ont maintenant leur propre nom dans la colonne `interface`.
+La comparaison est **case-insensitive** : les fichiers gardent le site en minuscules (`siege`), les noms l'écrivent en majuscules. Ajouter un site ou une interface ne demande pas de modifier le programme.
 
 `MULTI` est réservé, toujours accepté comme site et comme interface, à ne pas mettre dans les fichiers : les membres d'un groupe (ou les bornes d'un pool) sont sur plusieurs sites ou plusieurs interfaces.
 
@@ -86,25 +69,25 @@ Les anciennes entrées `vpn`, `oob` et `loop` (interfaces hors zone `ssl.root`, 
 Fichier à la racine du projet, fourni par l'équipe réseau. Autre chemin : `--reseaux`.
 
 ```text
-reseau;site;zone;vlan;interface
-10.0.16.0/24;hq;lan;16;CABINES
-10.118.131.0/24;hq;mgmt;131;IDRAC
-192.168.1.0/24;hq;;;mgmt
-89.90.126.128/29;hq;;;FObouygues
-10.210.0.0/24;gras;;210;SRV
+reseau;site;vlan;interface
+10.0.16.0/24;hq;16;CABINES
+10.118.131.0/24;hq;131;IDRAC
+192.168.1.0/24;hq;;mgmt
+89.90.126.128/29;hq;;FObouygues
+10.210.0.0/24;gras;210;SRV
 ```
 
-- séparateur `;`, en-tête `reseau;site;zone;vlan;interface` ;
+- séparateur `;`, en-tête `reseau;site;vlan;interface` ;
 - un réseau CIDR par ligne (IPv4 ou IPv6) ;
-- site et zone en minuscules ; `zone` facultative : vide hors zone FortiGate, toujours vide pour Stormshield ; si elle est remplie, elle doit être dans `contextes.txt` ;
+- site en minuscules ;
 - `vlan` facultatif : VLAN ID de 1 à 4094 ;
 - `interface` : côté FortiGate, **alias** de l'interface (`set alias`, `CENTRALE DETECTION GAZ` pour `VLAN-25`), à défaut son nom ; côté Stormshield, le `Name` de l'interface. Remplie par `fwclean reseaux` et **modifiable à la main**, par exemple pour remplacer avant la migration un alias ou un nom qui ne dit rien (`VLAN-131`, `port3`) par le libellé du réseau (`IDRAC`) ;
 - lignes vides et commentaires `#` ignorés ; un en-tête répété plus bas (bloc collé) est ignoré ;
-- un même réseau déclaré deux fois avec un site, une zone, un VLAN ou une interface différents est refusé.
+- un même réseau déclaré deux fois avec un site, un VLAN ou une interface différents est refusé.
 
-**Ancien format.** Un fichier `reseau;site;zone;vlan` (ou `reseau;site;zone`), ou une ligne plus courte que l'en-tête, reste lu : l'interface manque, les objets de ces réseaux sont **à revoir** (« interface introuvable : réseau de reseaux.csv sans colonne interface »), et une zone absente de `contextes.txt` y est ignorée. `fwclean reseaux … --ajouter` migre ces lignes (voir [la méthode](methode-nettoyage.md#référentiel-réseaux)).
+**Ancien format.** Un fichier avec colonne zone (`reseau;site;zone;vlan;interface`, `reseau;site;zone;vlan` ou `reseau;site;zone`) reste lu : la zone est ignorée, quelle que soit sa valeur. Sans colonne interface, ou sur une ligne plus courte que l'en-tête, l'interface manque : les objets de ces réseaux sont **à revoir** (« interface introuvable : réseau de reseaux.csv sans colonne interface »). `fwclean reseaux … --ajouter` migre ces lignes (voir [la méthode](methode-nettoyage.md#référentiel-réseaux)).
 
-**Sites distants.** Les réseaux connectés viennent de `fwclean reseaux` ; les autres (sites distants, pools VPN, IP publiques) s'ajoutent à la main. Pour un site distant, l'interface est le libellé du VLAN (`SRV`, `POSTE-FILAIRE`…) et la zone reste vide : `10.210.0.0/24;gras;;210;SRV`. Un nouveau site est un ajout libre : l'écrire suffit à le rendre valide dans les noms (`GRAS_HST_SRV_…`).
+**Sites distants.** Les réseaux connectés viennent de `fwclean reseaux` ; les autres (sites distants, pools VPN, IP publiques) s'ajoutent à la main. Pour un site distant, l'interface est le libellé du VLAN (`SRV`, `POSTE-FILAIRE`…) : `10.210.0.0/24;gras;210;SRV`. Un nouveau site est un ajout libre : l'écrire suffit à le rendre valide dans les noms (`GRAS_HST_SRV_…`).
 
 Le plan d'adressage réel est sensible : `reseaux.csv` est ignoré par git. Le dépôt versionne seulement [`reseaux.exemple.csv`](../reseaux.exemple.csv), à copier. Sans `reseaux.csv`, l'audit tourne quand même : aucun site n'est connu, les objets d'adresse non conformes sont tous signalés à revoir.
 
@@ -127,7 +110,7 @@ Le détail reprend l'ancien nom sans préfixe, et sans le site et l'interface re
 
 ## Réseaux
 
-Un objet réseau prend le site, le VLAN et l'interface de la ligne de `reseaux.csv` la plus précise qui le contient (la zone de cette ligne reste pour l'inventaire) :
+Un objet réseau prend le site, le VLAN et l'interface de la ligne de `reseaux.csv` la plus précise qui le contient :
 
 - **réseau identique** à celui de l'interface : le nom se termine par l'interface et ne garde rien de l'ancien nom. `Res-VLAN16` (`10.0.16.0/24`) → `HQ_NET_V16_CABINES` ;
 - **sous-réseau** plus petit (une `/28` dans une `/24`) : l'ancien nom reste en détail après l'interface, sinon plusieurs objets auraient le même nom. `Imprimantes` (`10.0.16.0/28`) → `HQ_NET_V16_CABINES-IMPRIMANTES` ;
