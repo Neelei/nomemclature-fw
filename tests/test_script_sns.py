@@ -308,3 +308,10 @@ def test_execution_modify_on_refuse(monkeypatch):
     code, envoyees, _ = _executer_lot(monkeypatch, ["CONFIG OBJECT HOST DELETE name=a"], refus={"MODIFY ON"})
     assert code == 1
     assert envoyees == ["MODIFY ON", "<disconnect>"]
+
+
+def test_execution_jusqua(monkeypatch):
+    commandes = ["CONFIG OBJECT HOST DELETE name=a global=1", "CONFIG OBJECT HOST DELETE name=b global=1"]
+    code, envoyees, _ = _executer_lot(monkeypatch, commandes, argv=("--jusqua", "1"))
+    assert code == 0
+    assert envoyees == ["MODIFY ON", commandes[0], "CONFIG OBJECT ACTIVATE", "CONFIG FILTER ACTIVATE", "<disconnect>"]

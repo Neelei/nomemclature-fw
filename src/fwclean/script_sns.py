@@ -58,7 +58,7 @@ modifications locales sur le SNS sont écrasées.
 Dépendance : pip install stormshield.sns.sslclient
 Mot de passe : variable d'environnement SNS_PASS, sinon demandé au lancement.
 Rien n'est envoyé avec --dry-run. Arrêt à la première erreur hors suppression,
-sans activation ; reprendre ensuite avec --depuis N.
+sans activation ; reprendre ensuite avec --depuis N. --jusqua N borne l'envoi.
 \"\"\"
 
 from __future__ import annotations
@@ -107,12 +107,19 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="Reprendre à la commande N (numéro affiché), après un arrêt sur erreur",
     )
+    analyseur.add_argument(
+        "--jusqua",
+        type=int,
+        default=None,
+        help="S'arrêter après la commande N (incluse), puis activer : test sur quelques commandes",
+    )
     args = analyseur.parse_args(argv)
-    if not 1 <= args.depuis <= max(len(COMMANDES), 1):
-        print(f"--depuis : entre 1 et {len(COMMANDES)}", file=sys.stderr)
-        return 2
     total = len(COMMANDES)
-    a_envoyer = list(enumerate(COMMANDES, start=1))[args.depuis - 1 :]
+    fin = total if args.jusqua is None else args.jusqua
+    if not 1 <= args.depuis <= max(fin, 1) or not 1 <= fin <= max(total, 1):
+        print(f"--depuis / --jusqua : 1 <= depuis <= jusqua <= {total}", file=sys.stderr)
+        return 2
+    a_envoyer = list(enumerate(COMMANDES, start=1))[args.depuis - 1 : fin]
 
     if args.dry_run:
         print("MODIFY ON")
