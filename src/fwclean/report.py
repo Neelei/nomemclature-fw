@@ -1,0 +1,358 @@
+"""Rapport Markdown et plan JSON. Écriture seule dans le dossier de sortie."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from fwclean import __version__
+from fwclean.model import Inventaire, Resultat
+from fwclean.naming import LIBELLE, LIBELLE_CONSTRUCTEUR
+
+AVERTISSEMENT = (
+    "Aucune modification n'a été appliquée. Ce plan est une proposition à relire : "
+    "il ne change ni l'action, ni la source, ni la destination, ni le service d'une règle."
+)
+
+
+def ecrire(resultat: Resultat, dossier: Path) -> tuple[Path, Path]:
+    dossier.mkdir(parents=True, exist_ok=True)
+    rapport = dossier / "rapport.md"
+    plan = dossier / "plan.json"
+    rapport.write_text(_markdown(resultat), encoding="utf-8")
+    plan.write_text(_json(resultat), encoding="utf-8")
+    return rapport, plan
+
+
+def plan_dict(resultat: Resultat) -> dict:
+    plan = {
+        "avertissement": AVERTISSEMENT,
+        "constructeur": resultat.inventaire.constructeur,
+        "sources": list(resultat.inventaire.sources),
+        "avertissements": {
+            "messages": list(resultat.inventaire.avertissements),
+            "retraits_suspendus": resultat.inventaire.retraits_suspendus,
+            "noms_non_definis": list(resultat.inventaire.non_definis),
+        },
+        "renommages": [
+            {
+                "sorte": item.sorte,
+                "ancien": item.ancien,
+                "nouveau": item.nouveau,
+                "references": list(item.references),
+            }
+            for item in resultat.renommages
+        ],
+        "fusions": [
+            {
+                "sorte": item.sorte,
+                "contenu": item.contenu,
+                "conserve": item.conserve,
+                "nouveau_nom": item.nouveau_nom,
+                "supprimes": list(item.supprimes),
+                "references_reecrites": list(item.references_reecrites),
+            }
+            for item in resultat.fusions
+        ],
+        "retraits": [
+            {"sorte": item.sorte, "nom": item.nom, "motif": item.motif}
+            for item in resultat.retraits
+        ],
+        "a_revoir": [
+            {"sorte": item.sorte, "nom": item.nom, "commentaire": item.commentaire}
+            for item in resultat.non_conformes
+            if item.traitement == "revoir"
+        ],
+    }
+    if resultat.inventaire.constructeur == "stormshield":
+        plan["natifs_ignores"] = [
+            {"sorte": objet.sorte, "nom": objet.nom} for objet in resultat.natifs
+        ]
+    if resultat.globaux:
+        plan["globaux"] = [
+            {
+                "sorte": item.sorte,
+                "ancien": item.ancien,
+                "action": item.action,
+                "nouveau": item.nouveau,
+                "contenu": item.contenu,
+                "membres": list(item.membres),
+                "references": list(item.references),
+                "commentaire": item.commentaire,
+            }
+            for item in resultat.globaux
+        ]
+    if resultat.natifs_interfaces:
+        plan["natifs_interfaces"] = [
+            {
+                "natif": item.natif,
+                "sorte": item.sorte,
+                "interface": item.interface,
+                "action": item.action,
+                "nouveau": item.nouveau,
+                "contenu": item.contenu,
+                "references": list(item.references),
+                "groupes": list(item.groupes),
+                "nat": list(item.nat),
+                "commentaire": item.commentaire,
+            }
+            for item in resultat.natifs_interfaces
+        ]
+    return plan
+
+
+def _json(resultat: Resultat) -> str:
+    return json.dumps(plan_dict(resultat), ensure_ascii=False, indent=2) + "\n"
+
+
+def _markdown(resultat: Resultat) -> str:
+    inventaire = resultat.inventaire
+    constructeur = LIBELLE_CONSTRUCTEUR.get(inventaire.constructeur, inventaire.constructeur)
+    sources = ", ".join(inventaire.sources) if inventaire.sources else "—"
+    lignes = [
+        "# Rapport d'audit de nomenclature",
+        "",
+        f"Constructeur : {constructeur}",
+        f"Sources : {sources}",
+        f"Référentiel réseaux : {_cell(resultat.referentiel)}",
+        "",
+        AVERTISSEMENT,
+        "",
+        "L'outil ne se connecte à aucun équipement.",
+        "",
+        "## Compteurs",
+        "",
+        "| Indicateur | Nombre |",
+        "| --- | ---: |",
+        f"| Objets | {len(inventaire.objets)} |",
+        f"| Règles | {len(inventaire.regles)} |",
+        f"| Noms non conformes | {len(resultat.non_conformes)} |",
+        f"| Groupes de doublons | {len(resultat.fusions)} |",
+        f"| Orphelins | {'suspendus' if inventaire.retraits_suspendus else len(resultat.retraits)} |",
+        f"| Objets ignorés | {len(inventaire.ignores)} |",
+        f"| Noms cités non définis | {len(inventaire.non_definis)} |",
+    ]
+    if inventaire.constructeur == "stormshield":
+        lignes.append(f"| Objets natifs SNS ignorés | {len(resultat.natifs)} |")
+    if resultat.globaux:
+        lignes.append(f"| Objets globaux SMC à remplacer ou supprimer | {len(resultat.globaux)} |")
+    if resultat.natifs_interfaces:
+        remplaces = sum(1 for item in resultat.natifs_interfaces if item.action != "revoir")
+        lignes.append(f"| Natifs remplacés (Network_, Firewall_) | {remplaces} |")
+    lignes.append("")
+    lignes.extend(_avertissements(inventaire))
+    lignes.extend(["## Noms non conformes", ""])
+    if resultat.non_conformes:
+        lignes.extend(
+            [
+                "| Sorte | Nom | Traitement | Nom proposé | Commentaire |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for item in resultat.non_conformes:
+            propose = item.nom_propose or "—"
+            commentaire = item.commentaire or ""
+            lignes.append(
+                f"| {_cell(LIBELLE.get(item.sorte, item.sorte))} | {_cell(item.nom)} | "
+                f"{_cell(item.traitement)} | {_cell(propose)} | {_cell(commentaire)} |"
+            )
+    else:
+        lignes.append("Aucun.")
+    lignes.extend(["", "## Doublons stricts", ""])
+    if resultat.fusions:
+        for fusion in resultat.fusions:
+            lignes.append(
+                f"### {_cell(LIBELLE.get(fusion.sorte, fusion.sorte))} — {_cell(fusion.contenu)}"
+            )
+            lignes.append("")
+            lignes.append(f"- Conservé : `{fusion.conserve}`")
+            if fusion.nouveau_nom != fusion.conserve:
+                lignes.append(f"- Nom après renommage : `{fusion.nouveau_nom}`")
+            supprimes = ", ".join(f"`{nom}`" for nom in fusion.supprimes)
+            lignes.append(f"- Fusionnés : {supprimes}")
+            if fusion.references_reecrites:
+                cibles = ", ".join(f"`{nom}`" for nom in fusion.references_reecrites)
+                lignes.append(f"- Références à réécrire : {cibles}")
+            else:
+                lignes.append("- Références à réécrire : aucune")
+            lignes.append("")
+    else:
+        lignes.append("Aucun.")
+        lignes.append("")
+    lignes.extend(
+        [
+            "## Orphelins",
+            "",
+            "Un objet utilisé seulement par une règle désactivée n'est pas orphelin. "
+            "Les références comptées sont les règles (actives ou désactivées), les groupes, "
+            "les VIP, le NAT et les routes.",
+            "",
+        ]
+    )
+    if inventaire.retraits_suspendus:
+        lignes.append(f"Retraits suspendus : {_cell(inventaire.retraits_suspendus)}.")
+    elif resultat.retraits:
+        if inventaire.constructeur == "stormshield":
+            lignes.extend(
+                [
+                    "**À vérifier avant chaque suppression** : « Vérifier l'utilisation » sur "
+                    "l'objet dans le SNS. Routeurs, VPN, DHCP et proxys ne "
+                    "sont pas lus : un objet cité seulement par eux figure ici à tort.",
+                    "",
+                ]
+            )
+        lignes.extend(["| Sorte | Nom |", "| --- | --- |"])
+        for retrait in resultat.retraits:
+            lignes.append(
+                f"| {_cell(LIBELLE.get(retrait.sorte, retrait.sorte))} | {_cell(retrait.nom)} |"
+            )
+    else:
+        lignes.append("Aucun.")
+    if resultat.natifs:
+        lignes.extend(
+            [
+                "",
+                "## Objets natifs SNS ignorés",
+                "",
+                "Objets de la base par défaut Stormshield : jamais renommés, supprimés ni "
+                "retirés. Un objet natif peut être l'objet conservé d'une fusion.",
+                "",
+                "| Sorte | Nom |",
+                "| --- | --- |",
+            ]
+        )
+        for objet in resultat.natifs:
+            lignes.append(
+                f"| {_cell(LIBELLE.get(objet.sorte, objet.sorte))} | {_cell(objet.nom)} |"
+            )
+    if resultat.globaux:
+        lignes.extend(_globaux(resultat))
+    if resultat.natifs_interfaces:
+        lignes.extend(_natifs_interfaces(resultat))
+    if inventaire.ignores:
+        lignes.extend(["", "## Objets ignorés", ""])
+        for ignore in inventaire.ignores:
+            lignes.append(f"- {_cell(ignore)}")
+    lignes.extend(
+        [
+            "",
+            "## Hors périmètre",
+            "",
+            "Chevauchements de réseaux, fusion de règles, changement de NAT, "
+            "utilisateurs, certificats, poussée vers l'équipement : non traités.",
+            "",
+            f"fwclean {__version__} — proposition seulement.",
+            "",
+        ]
+    )
+    return "\n".join(lignes)
+
+
+_ACTIONS_GLOBAL = {
+    "reutiliser": "réutiliser l'objet local",
+    "creer": "créer l'objet local",
+    "revoir": "à revoir",
+    "supprimer": "supprimer (non cité)",
+}
+
+
+def _globaux(resultat: Resultat) -> list[str]:
+    lignes = [
+        "",
+        "## Objets globaux SMC",
+        "",
+        "Objets du dossier Global/, non modifiables sur le firewall. Après copie des règles "
+        "globales dans la politique locale, chaque global cité est remplacé par un objet local "
+        "(réutilisé s'il existe à l'identique, créé sinon), puis supprimé (lot 04-globaux). "
+        "Les globaux qui ne sont plus cités sont supprimés.",
+        "",
+    ]
+    compte: dict[str, int] = {}
+    for item in resultat.globaux:
+        compte[item.action] = compte.get(item.action, 0) + 1
+    lignes.append(
+        ", ".join(f"{_ACTIONS_GLOBAL[action]} : {nombre}" for action, nombre in sorted(compte.items()))
+        + "."
+    )
+    lignes.extend(
+        [
+            "",
+            "| Sorte | Objet global | Contenu | Action | Objet local | Commentaire |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for item in resultat.globaux:
+        contenu = item.contenu
+        if item.membres:
+            contenu += f" → {', '.join(item.membres)}"
+        lignes.append(
+            f"| {_cell(LIBELLE.get(item.sorte, item.sorte))} | {_cell(item.ancien)} | "
+            f"{_cell(contenu)} | {_cell(_ACTIONS_GLOBAL[item.action])} | "
+            f"{_cell(item.nouveau or '—')} | {_cell(item.commentaire or '')} |"
+        )
+    return lignes
+
+
+_ACTIONS_NATIF = {
+    "reutiliser": "réutiliser l'objet local",
+    "creer": "créer l'objet local",
+    "revoir": "à revoir (laissé natif)",
+}
+
+
+def _natifs_interfaces(resultat: Resultat) -> list[str]:
+    lignes = [
+        "",
+        "## Natifs remplacés",
+        "",
+        "Objets créés par le SNS pour chaque interface (Network_X : réseau de l'interface, "
+        "Firewall_X : adresse du firewall). Dans les règles de filtrage et les groupes locaux, "
+        "chacun est remplacé par un objet local de même contenu (lot 06-natifs) : réseau "
+        "{SITE}_NET_[V{VLAN}_]{INTERFACE}, hôte {SITE}_HST_FW_{INTERFACE}. Les natifs restent "
+        "en place, ni renommés ni supprimés ; le NAT et les routes continuent de les citer. "
+        "Network_internals reste natif.",
+        "",
+    ]
+    compte: dict[str, int] = {}
+    for item in resultat.natifs_interfaces:
+        compte[item.action] = compte.get(item.action, 0) + 1
+    lignes.append(
+        ", ".join(f"{_ACTIONS_NATIF[action]} : {nombre}" for action, nombre in sorted(compte.items())) + "."
+    )
+    lignes.extend(
+        [
+            "",
+            "| Natif | Interface | Contenu | Action | Objet local | Règles | Groupes | NAT et routes | Commentaire |",
+            "| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |",
+        ]
+    )
+    for item in resultat.natifs_interfaces:
+        lignes.append(
+            f"| {_cell(item.natif)} | {_cell(item.interface or '—')} | {_cell(item.contenu)} | "
+            f"{_cell(_ACTIONS_NATIF[item.action])} | {_cell(item.nouveau or '—')} | "
+            f"{len(item.references)} | {len(item.groupes)} | {len(item.nat)} | {_cell(item.commentaire or '')} |"
+        )
+    return lignes
+
+
+def _avertissements(inventaire: Inventaire) -> list[str]:
+    if not inventaire.avertissements and not inventaire.non_definis:
+        return []
+    lignes = ["## Avertissements", ""]
+    lignes.extend(f"- {_cell(message)}" for message in inventaire.avertissements)
+    if inventaire.non_definis:
+        lignes.extend(
+            [
+                "",
+                f"Noms cités mais non définis ({len(inventaire.non_definis)}), hors objets "
+                "implicites (any, internet, Firewall_*, Network_*, ephemeral_fw*) :",
+                "",
+            ]
+        )
+        lignes.extend(f"- `{nom}`" for nom in inventaire.non_definis)
+    lignes.append("")
+    return lignes
+
+
+def _cell(valeur: str) -> str:
+    return valeur.replace("|", "\\|").replace("\n", " ")

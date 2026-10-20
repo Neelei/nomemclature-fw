@@ -1,0 +1,19 @@
+# Exports réels : restent sur la machine, jamais dans git.
+inbox/
+
+# Rapports produits par fwclean.
+out/
+
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv
+.pytest_cache
+.ruff_cache
+
+# Sauvegardes locales de reseaux.csv avant migration.
+reseaux.csv.bak*

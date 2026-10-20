@@ -1,0 +1,4 @@
+# Exemple synthétique du fichier natif SNS servicegroup : une section par groupe, un membre par ligne.
+[web]   # Web Services
+https_ep
+dns_any

@@ -1,0 +1,16 @@
+# Exemple synthétique du fichier natif SNS Global/object : objets globaux poussés par la SMC
+# (aucune donnée réelle). Les règles locales les citent « global_<nom> » ou « Global_<nom> ».
+# Cas couverts : identique à un objet local (réutilisé), à créer en local, hors reseaux.csv
+# (à revoir), cité par une route (à reprendre à la main), cité par aucune règle (supprimé).
+[Host]
+SRV_WEB=10.1.1.10           # même adresse que l'hôte local srv_web
+SRV_APPLI=10.1.2.20
+NAS_INCONNU=192.0.2.10
+PASSERELLE_SECOURS=10.0.0.2
+SRV_RETIRE=10.1.2.99
+
+[Network]
+LAN_USERS=10.0.0.0/24       # même réseau que Res-VLAN10
+
+[Service]
+http_appli=8080/tcp

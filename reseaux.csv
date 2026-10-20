@@ -1,0 +1,113 @@
+# Référentiel réseaux généré par fwclean depuis EPFRFORTI01.conf.
+# Colonnes reseau;site;zone;vlan;interface (migré le 2026-10-03 par fwclean reseaux --ajouter
+# depuis EPFRFORTI01.conf puis inbox/stormshield ; ancien fichier : reseaux.csv.bak-4col).
+# zone = zone FortiGate traduite par contextes.txt, vide hors zone et pour les interfaces SNS ;
+# vlan = vlanid ou Tag ; interface = alias FortiGate (set alias, appliqué le 2026-10-03 ;
+# avant : reseaux.csv.bak-nom-interface), à défaut nom de l'interface, et Name côté SNS.
+# À remplacer à la main s'il ne dit rien (« peu parlant » ci-dessous, nom en suggestion).
+# Fichier réel : ignoré par git. Relire avant usage ; ajouter à la main les réseaux
+# non connectés (sites distants, pools VPN, IP publiques).
+reseau;site;zone;vlan;interface
+192.168.1.0/24;hq;;;MGMT-OOB  # mgmt, hors zone — ancienne zone : oob
+10.0.0.0/24;hq;lan;11;SERVERS  # VLAN-11 (SRV-ESX-MSA), zone LAN
+172.16.10.0/24;hq;dmz;12;DMZ  # VLAN-12 (DMZ), zone DMZ
+10.0.3.0/24;hq;lan;21;CCTV  # VLAN-21 (VIDEOSURV), zone LAN
+192.168.0.0/24;hq;lan;51;HOTSPOT  # VLAN-51 (HOTSPOT), zone LAN
+192.168.200.0/24;hq;lan;1;VM-NETWORK  # VLAN-1 (VM Network), zone LAN
+10.1.1.0/24;hq;lan;4;LABO-ANA  # VLAN-4 (LABO-ANA), zone LAN — même nom normalisé que LABO_ANA
+10.0.5.0/24;hq;lan;5;WIFI-OT  # VLAN-5 (WIFI CISCO PROD), zone LAN
+172.16.255.252/30;hq;wan;777;INTERCO-FW  # VLAN-777 (INTERCO-WAN), zone WAN — ancienne zone : interco
+10.0.4.0/24;hq;lan;22;INTERPHONIE  # VLAN-22 (INTERPHONIE), zone LAN
+10.0.6.0/24;hq;lan;23;CTRL-ACCES  # VLAN-23 (CONTROLE ACCES), zone LAN
+10.0.7.0/24;hq;lan;24;CTRL-INTRUSION  # VLAN-24 (CENTRALE INTRUSION), zone LAN
+10.0.8.0/24;hq;lan;25;CTRL-GAZ  # VLAN-25 (CENTRALE DETECTION GAZ), zone LAN
+10.0.9.0/24;hq;lan;26;CTRL-ELECTRICITE  # VLAN-26 (CENTRALE ELECTRICITE), zone LAN
+10.1.2.0/24;hq;lan;69;POINTEUSE  # VLAN-69 (POINTEUSE), zone LAN
+10.118.127.0/24;hq;lan;127;MGMT-SRV  # VLAN-127 (MANAGEMENT), zone LAN
+10.118.253.0/24;hq;lan;253;MEMORIES  # MEMORIES, zone LAN
+10.0.2.0/24;hq;lan;2;CORP-PRINTER  # VLAN-2 (PRINTER), zone LAN
+10.118.200.0/24;hq;lan;200;VDI  # VLAN-200 (VDI), zone LAN
+10.0.16.0/24;hq;lan;16;CABINES  # VLAN-16 (CABINES), zone LAN
+10.0.31.0/24;hq;lan;31;KARDEX  # VLAN-31 (KARDEX), zone LAN
+10.255.150.254/32;hq;;;LOOPMGMT  # LOOPMGMT, hors zone — ancienne zone : loop
+10.0.50.0/24;hq;lan;50;MEETING  # VLAN-50 (MEETING), zone LAN
+10.118.131.0/24;hq;mgmt-ntk;131;IDRAC  # IDRAC (VLAN-131), zone MGMT NETWORKS — alias peu parlant (nom : IDRAC)
+10.118.133.0/24;hq;mgmt-ntk;133;DATACORE  # Datacore (VLAN-133), zone MGMT NETWORKS — alias peu parlant (nom : Datacore)
+10.118.132.0/24;hq;mgmt-ntk;132;MGMT-SAN  # SAN Mgmt (VLAN-132), zone MGMT NETWORKS — alias peu parlant (nom : SAN Mgmt)
+10.118.137.0/24;hq;bastion;137;MGMT-ADM  # ADMIN_MGMT (VLAN-137), zone Bastion ADMIN_MGMT — alias peu parlant (nom : ADMIN_MGMT)
+10.0.40.0/22;hq;lan;40;WIFI-CORP  # VLAN-40 (WIFI CORPORATE), zone Users LAN
+10.0.111.0/24;hq;preprodfr;111;PREPROD-FR  # PreProd FR (VLAN-111), zone PreProd FRANCE — alias peu parlant (nom : PreProd FR)
+10.0.211.0/24;hq;preprodth;211;PREPROD-TH  # PreProd TH (VLAN-211), zone PreProd THAILANDE — alias peu parlant (nom : PreProd TH)
+192.168.42.0/24;hq;invite;42;WIFI-GUEST  # WIFI INVITE (VLAN-42), zone WIFI INVITE VLAN-42 — alias peu parlant (nom : WIFI INVITE)
+192.168.41.0/24;hq;mobile;41;WIFI-BYOD  # VLAN-41, zone WIFI MOBILE VLAN-41 — nom peu parlant
+
+
+# Ajouté par fwclean reseaux --ajouter depuis Network :
+172.16.168.252/30;hq;;;HA  # HA (ethernet4) — ancienne zone : oob
+89.90.126.128/29;hq;;;FObouygues  # FObouygues (ethernet5) — ancienne zone : wan
+192.168.10.0/24;hq;;;FOFreePro  # FOFreePro (ethernet13) — ancienne zone : wan
+172.16.30.0/30;hq;;;VTI_FRSI_THUS  # VTI_FRSI_THUS (ipsec1) — ancienne zone : vpn
+
+# Lignes ES et TH ci-dessous : 4 champs, sans interface, gardées telles quelles. Leurs objets
+# sont à revoir. Pour les activer : vider la zone et mettre le libellé du VLAN en 5e colonne
+# (ex. 10.211.0.0/24;th;;11;SRV).
+
+# ESPAGNE
+192.168.203.0/24;es;;;corp-wired  # HA (ethernet4)
+10.1.203.0/24;es;;;pointeuse  # FOFreePro (ethernet13)
+10.203.127.0/24;es;;;mgmt-ntk  # VTI_FRSI_THUS (ipsec1)
+
+#THAILANDE USINE
+10.211.127.0/24;th;;127;mgmt-ntk
+10.211.128.0/24;th;;128;mgmt-srv
+10.211.0.0/24;th;;11;srv
+10.211.20.0/22;th;;20;corp-wifi
+10.211.30.0/24;th;;30;bastion
+10.211.40.0/22;th;;40;corp-wired
+10.211.44.0/23;th;;44;byod-wifi
+10.211.46.0/24;th;;46;guest-wifi
+10.211.48.0/23;th;;48;prod-wifi
+10.211.60.0/23;th;;60;printer
+10.211.70.0/24;th;;70;visio
+10.211.72.0/24;th;;72;video
+10.211.73.0/24;th;;73;ctrl-access
+10.211.74.0/24;th;;74;pointeuse
+10.211.80.0/23;th;;80;prod-ot
+10.211.253.0/24;th;;253;memories
+
+#BK (BANGKOK)
+192.168.204.0/24;bk;;;corp-wired
+10.1.204.0/24;bk;;69;pointeuse
+10.204.127.0/24;bk;;127;mgmt-net
+
+# G2 (Grasse 2002) — schéma du 2026-10-19, IP du firewall en .252
+10.210.2.0/24;g2;;2;printer
+10.210.6.0/24;g2;;23;badge
+10.210.32.0/24;g2;;32;voip
+10.1.210.0/24;g2;;69;pointeuse
+10.210.0.0/24;g2;;11;corp-wired
+10.210.127.0/24;g2;;127;mgmt-net
+10.210.5.0/24;g2;;5;WIFI-CISCO
+10.210.10.0/24;g2;;12;dmz
+172.16.5.0/24;g2;;33;pra
+10.210.99.0/24;g2;;99;dev
+10.210.36.0/24;g2;;36;wyse
+10.210.131.0/24;g2;;131;idrac
+10.210.253.0/24;g2;;253;memories
+10.210.137.0/24;g2;;137;mgmt-admin
+
+
+# DU (DUBAI)
+192.168.205.0/24;du;;;corp-wired
+192.168.32.0/24;du;;;voip
+10.205.3.0/24;du;;21;cctv
+10.1.209.0/24;du;;69;pointeuse
+10.209.127.0/24;du;;127;mgmt-net
+
+# PO (POLOGNE)
+192.168.207.0/24;po;;;corp-wired
+10.207.127.0/24;po;;;mgmt-net
+
+# IT (ITALIE)
+192.168.202.0/24;it;;;corp-wired
+10.1.202.0/24;it;;;pointeuse
