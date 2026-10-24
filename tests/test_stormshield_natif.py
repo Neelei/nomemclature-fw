@@ -225,7 +225,8 @@ def test_groupes_absents_suspendent_les_retraits(racine, tmp_path, referentiel):
     dossier = tmp_path / "sns"
     shutil.copytree(racine / "examples" / "stormshield-natif", dossier)
     (dossier / "router").write_text("[Routeur_Principal]\ngw=passerelle_wan\n", encoding="utf-8")
-    (dossier / "global").mkdir()
+    # exist_ok : sous Windows, `global` est le dossier `Global` de l'exemple (casse ignorée).
+    (dossier / "global").mkdir(exist_ok=True)
     inventaire = charger([dossier])
     assert inventaire.retraits_suspendus is None
     assert any("non lus (non gérés)" in message and "router" in message for message in inventaire.avertissements)
