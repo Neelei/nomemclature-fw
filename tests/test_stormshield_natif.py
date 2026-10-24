@@ -245,11 +245,14 @@ def test_slots_filter_et_dossier_global(racine, tmp_path):
     (dossier / "Filter" / "01").write_text('[Filter]\npass from srv_web to any rulename "r1"\n', encoding="utf-8")
     (dossier / "Filter" / "02").write_text('[Filter]\npass from Web_DMZ to any rulename "r1"\n', encoding="utf-8")
     (dossier / "Filter" / "03").write_text("", encoding="utf-8")
+    (dossier / "Filter" / "slotinfo").write_text('[Global]\nActive=1\n\n[01]\nName="r"\n', encoding="utf-8")
+    (dossier / "Filter" / "filter").write_text("[Config]\nOptimize=1\n", encoding="utf-8")
     (dossier / "global").mkdir()
     (dossier / "global" / "router").write_text("[r]\n", encoding="utf-8")
     inventaire = charger([dossier])
     assert sorted(regle.nom for regle in inventaire.regles) == ["01:r1", "02:r1"]
     assert any(source.endswith("global/router") for source in inventaire.sources)
+    assert any("non lus (non gérés)" in message and "Filter/slotinfo" in message for message in inventaire.avertissements)
     assert "objectgroup, servicegroup non lus" in inventaire.retraits_suspendus
 
 

@@ -153,7 +153,12 @@ def _developper(chemins: list[Path]) -> tuple[list[Path], list[str]]:
             if enfant.is_file() and (enfant.suffix.lower() in _SUFFIXES or nom in FICHIERS_NATIFS):
                 fichiers.append(enfant)
             elif enfant.is_dir() and nom == "filter":
-                fichiers.extend(slot for slot in sorted(enfant.iterdir()) if slot.is_file())
+                # Slots numérotés (00, 01…) ; slotinfo et filter (options [Config]) ne sont pas des règles.
+                for slot in sorted(enfant.iterdir()):
+                    if slot.is_file() and slot.name.isdigit():
+                        fichiers.append(slot)
+                    else:
+                        non_lus.append(_afficher(slot) + ("/" if slot.is_dir() else ""))
             elif enfant.is_dir() and nom == "global":
                 for fichier in sorted(enfant.iterdir()):
                     if fichier.is_file() and fichier.name.lower() in FICHIERS_GLOBAUX:

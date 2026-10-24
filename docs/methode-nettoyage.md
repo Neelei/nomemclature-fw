@@ -178,7 +178,7 @@ Un fichier absent sur le SNS fait échouer `tar` : le retirer de la liste et rel
 | `objectgroup` | groupes d'adresses : `[nom]` puis un membre par ligne | oui |
 | `servicegroup` | groupes de services, même forme | oui |
 | `router` | objets routeur (passerelles) | reconnu, non géré (signalé dans les avertissements) |
-| `Filter` | slot de filtrage actif : `[NAT]` et `[Filter]`, une règle par ligne | oui ; un dossier `Filter/` de slots aussi (règles préfixées par le nom du slot) |
+| `Filter` | slot de filtrage actif : `[NAT]` et `[Filter]`, une règle par ligne | oui ; un dossier `Filter/` de slots aussi (fichiers numérotés `00`, `01`…, règles préfixées par le nom du slot ; `slotinfo` et `filter` signalés non lus) |
 | `Network` | interfaces (`[ethernetN]`, `[vlanN]` avec `Tag=`, …) | pour `fwclean reseaux` |
 | `route` | `DefaultRoute=`, `[StaticRoutes]` (`[off ]DEST,IFACE->PASSERELLE`) | oui ; `[ReverseRoutes]` ignoré |
 | `Global/` | objets et politique globaux poussés par SMC : `object`, `objectgroup`, `servicegroup` (même format que les fichiers locaux), `Filter`… | `object`, `objectgroup`, `servicegroup` lus (voir [Objets globaux SMC](#objets-globaux-smc)) ; le reste reconnu, non géré |
